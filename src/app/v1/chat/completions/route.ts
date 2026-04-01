@@ -5,17 +5,27 @@ import { eq } from 'drizzle-orm';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: CORS_HEADERS });
+}
+
 export async function POST(req: Request) {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401 });
+    return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401, headers: CORS_HEADERS });
   }
 
   const apiKey = authHeader.split(' ')[1];
   const user = await db.select().from(users).where(eq(users.apiKey, apiKey)).limit(1);
 
   if (user.length === 0) {
-    return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
+    return NextResponse.json({ error: 'Invalid API key' }, { status: 401, headers: CORS_HEADERS });
   }
 
   const now = new Date();
@@ -29,13 +39,13 @@ export async function POST(req: Request) {
   }
 
   if (currentBalance <= 0) {
-    return NextResponse.json({ error: 'Insufficient balance ($20/day limit reached)' }, { status: 402 });
+    return NextResponse.json({ error: 'Insufficient balance ($20/day limit reached)' }, { status: 402, headers: CORS_HEADERS });
   }
 
   const body = await req.json();
   const s = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
   if (s.length === 0) {
-    return NextResponse.json({ error: 'Gateway settings not initialized' }, { status: 500 });
+    return NextResponse.json({ error: 'Gateway settings not initialized' }, { status: 500, headers: CORS_HEADERS });
   }
 
   try {
@@ -65,11 +75,12 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json(upstreamResponse.data);
+    return NextResponse.json(upstreamResponse.data, { headers: CORS_HEADERS });
   } catch (error: any) {
     console.error('Proxy Error:', error.response?.data || error.message);
     return NextResponse.json(error.response?.data || { error: 'Failed to proxy request' }, { 
-      status: error.response?.status || 500 
+      status: error.response?.status || 500,
+      headers: CORS_HEADERS
     });
   }
 }
