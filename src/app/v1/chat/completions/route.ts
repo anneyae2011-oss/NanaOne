@@ -18,7 +18,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
   }
 
-  // Check and reset daily credits if needed
   const now = new Date();
   const lastReset = user[0].lastReset ? new Date(user[0].lastReset) : new Date(0);
   const isNewDay = now.getDate() !== lastReset.getDate() || now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear();
@@ -45,21 +44,15 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${s[0].upstreamKey}`,
         'Content-Type': 'application/json',
       },
-      // Handle streaming later if needed, but for now simple JSON
     });
 
     const usage = upstreamResponse.data.usage;
     if (usage) {
       const promptTokens = usage.prompt_tokens;
       const completionTokens = usage.completion_tokens;
-      
-      // Pricing: $8/1M input, $25/1M output
       const cost = (promptTokens * 8 / 1000000) + (completionTokens * 25 / 1000000);
-      
       const newBalance = Math.max(0, currentBalance - cost);
-      
       await db.update(users).set({ balance: newBalance }).where(eq(users.id, user[0].id));
-      
       await db.insert(usageLogs).values({
         id: uuidv4(),
         userId: user[0].id,
