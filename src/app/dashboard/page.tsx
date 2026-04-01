@@ -34,7 +34,7 @@ export default function Dashboard() {
   };
 
   const fetchModels = async () => {
-    const res = await fetch('/api/v1/models');
+    const res = await fetch('/v1/models');
     if (res.ok) {
       const data = await res.json();
       setModels(data.data || []);
