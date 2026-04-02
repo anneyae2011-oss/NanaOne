@@ -5,6 +5,7 @@ import { eq, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(req: Request) {
+  console.log('--- SIGNUP API V3 (STRICT VOIP) TRIGGERED ---');
   try {
     const { username, phone } = await req.json();
 
@@ -31,14 +32,23 @@ export async function POST(req: Request) {
         const lookup = await client.lookups.v2.phoneNumbers(normalizedPhone)
           .fetch({ fields: 'line_type_intelligence' });
 
+        const lineType = lookup.lineTypeIntelligence?.type;
+        const carrier = lookup.lineTypeIntelligence?.carrierName?.toLowerCase() || '';
+
+        console.log(`[TWILIO] Result for ${normalizedPhone}: Type=${lineType}, Carrier=${carrier}`);
+
         if (!lookup.valid) {
           console.warn(`[TWILIO] Invalid number: ${normalizedPhone}`);
           return NextResponse.json({ error: 'This phone number is invalid according to global records', code: 'INVALID_NUMBER' }, { status: 400 });
         }
 
-        if (lookup.lineTypeIntelligence?.type === 'voip') {
-          console.warn(`[TWILIO] VOIP detected: ${normalizedPhone}`);
-          return NextResponse.json({ error: 'Security Check: VOIP and Virtual numbers are not allowed on NanaOne', code: 'VOIP_BLOCKED' }, { status: 400 });
+        // Block all VOIP types (voip, nonFixedVoip, fixedVoip)
+        const isVoip = lineType?.toLowerCase().includes('voip');
+        const isVirtualCarrier = carrier.includes('twilio') || carrier.includes('google voice') || carrier.includes('bandwidth');
+
+        if (isVoip || isVirtualCarrier) {
+          console.warn(`[TWILIO] VOIP/Virtual detected: ${normalizedPhone} (Type: ${lineType}, Carrier: ${carrier})`);
+          return NextResponse.json({ error: 'Security Check: Virtual, VOIP, and non-mobile numbers are strictly blocked on NanaOne.', code: 'VOIP_BLOCKED' }, { status: 400 });
         }
       } catch (twilioError: any) {
         console.error('Twilio Lookup Error:', twilioError.message, twilioError.status);
