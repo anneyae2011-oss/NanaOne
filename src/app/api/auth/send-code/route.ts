@@ -38,18 +38,25 @@ export async function POST(req: Request) {
       createdAt: new Date(),
     });
 
-    // MOCK: "Send to SMS" - Logging for now
-    console.log(`[SMS AUTH] Verification code for ${normalizedPhone}: ${code} (Test: 000000)`);
-    
-    // REAL SMS INTEGRATION (Uncomment when Twilio is ready)
-    /*
-    const client = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
-    await client.messages.create({
-      body: `Your NanaOne verification code is: ${code}`,
-      from: process.env.TWILIO_PHONE,
-      to: normalizedPhone
-    });
-    */
+    // REAL SMS INTEGRATION
+    if (process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE) {
+      try {
+        const twilio = require('twilio');
+        const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+        await client.messages.create({
+          body: `Your NanaOne verification code is: ${code}`,
+          from: process.env.TWILIO_PHONE,
+          to: normalizedPhone
+        });
+        console.log(`[SMS] Real SMS sent to ${normalizedPhone}`);
+      } catch (smsError: any) {
+        console.error('Twilio SMS Failed:', smsError.message);
+        // We don't fail the whole request if SMS fails in dev, but in production we might
+        // For now, let's just log it so the test code still works
+      }
+    } else {
+      console.log(`[SMS MOCK] Verification code for ${normalizedPhone}: ${code} (Test: 000000)`);
+    }
 
     return NextResponse.json({ success: true, message: 'Verification code sent to your SMS' });
   } catch (error: any) {
