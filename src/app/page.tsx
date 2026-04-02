@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Rocket, Key, ExternalLink } from 'lucide-react';
+import { Shield, Rocket, Key, ChevronRight, Zap } from 'lucide-react';
 
 export default function LandingPage() {
   const router = useRouter();
   const [isLogged, setIsLogged] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     const key = localStorage.getItem('nana_api_key');
@@ -24,16 +26,17 @@ export default function LandingPage() {
   };
 
   return (
-    <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '100px 20px' }}>
+    <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '100px 20px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div className="grid-bg"></div>
+      
       <div style={{ textAlign: 'center', marginBottom: '80px' }}>
-        <h1 className="title-gradient" style={{ fontSize: '5rem', marginBottom: '16px', letterSpacing: '-2px' }}>NanaOne</h1>
+        <h1 className="title-gradient" style={{ fontSize: 'clamp(3rem, 10vw, 5rem)', marginBottom: '16px', letterSpacing: '-2px' }}>NanaOne</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '1.25rem', maxWidth: '600px', margin: '0 auto' }}>
           The power of elite AI, delivered through a secure, high-performance gateway.
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '32px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '32px', flex: 1 }}>
         <div className="glass-card" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '40px' }}>
           <div style={{ background: 'rgba(124, 58, 237, 0.1)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
             <Rocket style={{ color: 'var(--primary)' }} />
@@ -61,18 +64,18 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <div className="glass-card" style={{ textAlign: 'center' }}>
-          <div style={{ background: 'rgba(0, 242, 254, 0.1)', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+        <div className="glass-card" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '40px' }}>
+          <div style={{ background: 'rgba(0, 242, 254, 0.1)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
             <Shield style={{ color: 'var(--accent)' }} />
           </div>
-          <h3 style={{ marginBottom: '12px' }}>Admin Panel</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '24px', fontSize: '0.9rem' }}>
-            Configure upstream providers and manage system models.
+          <h3 style={{ marginBottom: '12px', fontSize: '1.5rem' }}>Admin Panel</h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '32px', fontSize: '0.95rem', lineHeight: '1.6' }}>
+            Configure upstream providers, manage system models, and generate redeem codes.
           </p>
           
            {!isAdmin ? (
-            <button className="btn-primary" style={{ width: '100%', background: 'var(--secondary)', border: '1px solid var(--glass-border)' }} onClick={() => setIsAdmin(true)}>
-              Admin Login
+            <button className="btn-secondary" style={{ width: '100%' }} onClick={() => setIsAdmin(true)}>
+              Admin Login <Shield size={16} />
             </button>
           ) : (
             <form onSubmit={handleAdminLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -90,7 +93,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      <footer style={{ marginTop: '100px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+      <footer style={{ marginTop: '100px', paddingBottom: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
         <p>© 2026 NanaOne. All models integrated from private elite endpoints.</p>
       </footer>
     </main>
