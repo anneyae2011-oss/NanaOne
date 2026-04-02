@@ -32,8 +32,11 @@ export async function POST(req: Request) {
     // notifyUserViaDM(phone, `Your NanaOne verification code is: ${code}`);
 
     return NextResponse.json({ success: true, message: 'Verification code sent to your DMs' });
-  } catch (error) {
-    console.error('Send code error:', error);
-    return NextResponse.json({ error: 'Failed to send verification code' }, { status: 500 });
+  } catch (error: any) {
+    console.error('CRITICAL Send code error:', error);
+    return NextResponse.json({ 
+      error: 'Failed to send verification code', 
+      details: error.message || 'Unknown database or connection error' 
+    }, { status: 500 });
   }
 }
