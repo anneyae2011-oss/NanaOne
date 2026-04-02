@@ -13,13 +13,39 @@ export default function Dashboard() {
   const [inputKey, setInputKey] = useState('');
 
   useEffect(() => {
-    // Check if user has a key in localStorage
-    const savedKey = localStorage.getItem('nana_api_key');
-    if (savedKey) {
-      fetchUser(savedKey);
+    const init = async () => {
+      const savedKey = localStorage.getItem('nana_api_key');
+      if (savedKey) {
+        await fetchUser(savedKey);
+      } else {
+        await provisionAnonymous();
+      }
       fetchModels();
-    }
+    };
+    init();
   }, []);
+
+  const provisionAnonymous = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/auth/anonymous', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('nana_api_key', data.apiKey);
+        localStorage.setItem('nana_username', data.username);
+        setUser({
+          apiKey: data.apiKey,
+          username: data.username,
+          balance: 20.0,
+          oneTimeBalance: 0.0
+        });
+      }
+    } catch (e) {
+      console.error('Provisioning failed');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const fetchUser = async (key: string) => {
     const res = await fetch(`/api/user?key=${key}`);
@@ -28,26 +54,9 @@ export default function Dashboard() {
       setUser(data);
       localStorage.setItem('nana_api_key', key);
     } else {
-      localStorage.removeItem('nana_api_key');
-      setUser(null);
+      // If key is invalid, provision a new one
+      await provisionAnonymous();
     }
-  };
-
-  const fetchModels = async () => {
-    const res = await fetch('/v1/models');
-    if (res.ok) {
-      const data = await res.json();
-      setModels(data.data || []);
-    }
-  };
-
-  const generateKey = async () => {
-    setGenerating(true);
-    const res = await fetch('/api/user', { method: 'POST' });
-    const data = await res.json();
-    setUser(data);
-    localStorage.setItem('nana_api_key', data.apiKey);
-    setGenerating(false);
   };
 
   const copyToClipboard = () => {

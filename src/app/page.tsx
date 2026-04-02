@@ -2,18 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Rocket, ChevronRight } from 'lucide-react';
+import { Shield, Rocket, Key, ChevronRight, Zap, ExternalLink } from 'lucide-react';
 
 export default function LandingPage() {
   const router = useRouter();
-  const [isLogged, setIsLogged] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [password, setPassword] = useState('');
-
-  useEffect(() => {
-    const key = localStorage.getItem('nana_api_key');
-    if (key) setIsLogged(true);
-  }, []);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,24 +37,13 @@ export default function LandingPage() {
           </div>
           <h3 style={{ marginBottom: '12px', fontSize: '1.5rem' }}>User Portal</h3>
           <p style={{ color: 'var(--text-muted)', marginBottom: '32px', fontSize: '0.95rem', lineHeight: '1.6' }}>
-            Access the elite AI gateway. Generate unique keys, track credits, and manage your one-time balance.
+            Access the elite AI gateway instantly. No sign-up required. Your settings are saved to this browser.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {!isLogged ? (
-               <>
-                <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/auth/signup')}>
-                  Get Started <ChevronRight size={18} />
-                </button>
-                <button className="btn-secondary" style={{ width: '100%' }} onClick={() => router.push('/auth/login')}>
-                  Login to Account
-                </button>
-               </>
-            ) : (
-              <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/dashboard')}>
-                Go to Dashboard <Rocket size={18} />
+            <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/dashboard')}>
+                Enter Gateway <ChevronRight size={18} />
               </button>
-            )}
           </div>
         </div>
 
