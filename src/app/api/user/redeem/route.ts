@@ -12,16 +12,19 @@ export async function POST(req: Request) {
     }
 
     const normalizedCode = code.trim().toUpperCase();
+    console.log(`[REDEEM] Attempt for code ${normalizedCode} (apiKey: ${apiKey?.slice(0, 8)}...)`);
 
     const user = await db.select().from(users).where(eq(users.apiKey, apiKey)).limit(1);
     if (user.length === 0) {
-      return NextResponse.json({ error: 'User not found. Check your API key.' }, { status: 404 });
+      console.warn(`[REDEEM] User not found for API Key`);
+      return NextResponse.json({ error: 'User session invalid. Please re-login.', code: 'USER_NOT_FOUND' }, { status: 401 });
     }
 
     const redeemCode = await db.select().from(redeemCodes).where(eq(redeemCodes.code, normalizedCode)).limit(1);
     
     if (redeemCode.length === 0) {
-      return NextResponse.json({ error: 'Invalid code' }, { status: 400 });
+      console.warn(`[REDEEM] Invalid code: ${normalizedCode}`);
+      return NextResponse.json({ error: 'This redemption code does not exist', code: 'INVALID_CODE' }, { status: 400 });
     }
 
     if (redeemCode[0].isUsed) {
