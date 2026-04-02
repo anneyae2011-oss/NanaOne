@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { redeemCodes } from '@/lib/db/schema';
 import { v4 as uuidv4 } from 'uuid';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 
 export async function GET() {
   const codes = await db.select().from(redeemCodes).orderBy(desc(redeemCodes.createdAt)).limit(50);
