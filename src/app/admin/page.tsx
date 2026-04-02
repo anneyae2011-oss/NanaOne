@@ -95,21 +95,31 @@ export default function AdminPage() {
           <h2 className="title-gradient">Redeem Codes</h2>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '24px' }}>
+          <input 
+            type="text" 
+            className="input-field" 
+            placeholder="Code Name (Optional)" 
+            id="customCode"
+            style={{ width: '200px' }}
+          />
           <input 
             type="number" 
             className="input-field" 
             placeholder="Amount ($)" 
             id="codeAmount"
+            style={{ width: '150px' }}
           />
           <button className="btn-primary" onClick={async () => {
+            const customCode = (document.getElementById('customCode') as HTMLInputElement).value;
             const amount = (document.getElementById('codeAmount') as HTMLInputElement).value;
             if (!amount) return alert('Enter amount');
             const res = await fetch('/api/admin/redeem-codes', {
               method: 'POST',
-              body: JSON.stringify({ amount })
+              body: JSON.stringify({ amount, customCode })
             });
             const data = await res.json();
+            if (data.error) return alert(data.error);
             alert(`Code Created: ${data.code}`);
             window.location.reload();
           }}>
