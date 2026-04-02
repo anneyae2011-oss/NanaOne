@@ -12,6 +12,14 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+export const verificationCodes = pgTable('verification_codes', {
+  id: text('id').primaryKey(),
+  phone: text('phone').notNull(),
+  code: text('code').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
 export const settings = pgTable('settings', {
   id: integer('id').primaryKey(),
   upstreamEndpoint: text('upstream_endpoint'),
