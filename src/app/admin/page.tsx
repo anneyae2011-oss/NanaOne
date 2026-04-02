@@ -89,6 +89,40 @@ export default function AdminPage() {
         </div>
       </div>
 
+      <div className="glass-card" style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <Key className="title-gradient" />
+          <h2 className="title-gradient">Redeem Codes</h2>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+          <input 
+            type="number" 
+            className="input-field" 
+            placeholder="Amount ($)" 
+            id="codeAmount"
+          />
+          <button className="btn-primary" onClick={async () => {
+            const amount = (document.getElementById('codeAmount') as HTMLInputElement).value;
+            if (!amount) return alert('Enter amount');
+            const res = await fetch('/api/admin/redeem-codes', {
+              method: 'POST',
+              body: JSON.stringify({ amount })
+            });
+            const data = await res.json();
+            alert(`Code Created: ${data.code}`);
+            window.location.reload();
+          }}>
+            Generate Code
+          </button>
+        </div>
+
+        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+           {/* We can fetch and list codes here if needed, but for now simple generation works */}
+           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Latest codes are generated above. Check database for full list.</p>
+        </div>
+      </div>
+
       <div className="glass-card" style={{ marginTop: '24px', opacity: 0.7 }}>
         <h4 style={{ marginBottom: '12px', fontSize: '0.9rem' }}>System Info</h4>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>

@@ -4,7 +4,8 @@ export const users = pgTable('users', {
   id: text('id').primaryKey(),
   name: text('name'),
   apiKey: text('api_key').unique(),
-  balance: real('balance').default(20.0),
+  balance: real('balance').default(20.0), // Daily balance
+  oneTimeBalance: real('one_time_balance').default(0.0), // Non-resetting balance
   lastReset: timestamp('last_reset'),
   createdAt: timestamp('created_at').defaultNow(),
 });
@@ -22,6 +23,14 @@ export const models = pgTable('models', {
   description: text('description'),
   provider: text('provider'),
   enabled: boolean('enabled').default(true),
+});
+
+export const redeemCodes = pgTable('redeem_codes', {
+  code: text('code').primaryKey(),
+  amount: real('amount').notNull(),
+  isUsed: boolean('is_used').default(false),
+  usedBy: text('used_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow(),
 });
 
 export const usageLogs = pgTable('usage_logs', {

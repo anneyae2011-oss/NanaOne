@@ -32,14 +32,17 @@ export async function POST(req: Request) {
   const lastReset = user[0].lastReset ? new Date(user[0].lastReset) : new Date(0);
   const isNewDay = now.getDate() !== lastReset.getDate() || now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear();
 
-  let currentBalance = user[0].balance || 0;
+  let currentDailyBalance = user[0].balance || 0;
+  let currentOneTimeBalance = user[0].oneTimeBalance || 0;
+
   if (isNewDay) {
-    currentBalance = 20.0;
+    currentDailyBalance = 20.0;
     await db.update(users).set({ balance: 20.0, lastReset: now }).where(eq(users.id, user[0].id));
   }
 
-  if (currentBalance <= 0) {
-    return NextResponse.json({ error: 'Insufficient balance ($20/day limit reached)' }, { status: 402, headers: CORS_HEADERS });
+  const totalBalance = currentDailyBalance + currentOneTimeBalance;
+  if (totalBalance <= 0) {
+    return NextResponse.json({ error: 'Insufficient balance ($20/day limit reached and no one-time credits left)' }, { status: 402, headers: CORS_HEADERS });
   }
 
   const body = await req.json();
@@ -61,8 +64,22 @@ export async function POST(req: Request) {
       const promptTokens = usage.prompt_tokens;
       const completionTokens = usage.completion_tokens;
       const cost = (promptTokens * 8 / 1000000) + (completionTokens * 25 / 1000000);
-      const newBalance = Math.max(0, currentBalance - cost);
-      await db.update(users).set({ balance: newBalance }).where(eq(users.id, user[0].id));
+      
+      let newDaily = currentDailyBalance;
+      let newOneTime = currentOneTimeBalance;
+
+      if (currentDailyBalance >= cost) {
+        newDaily = currentDailyBalance - cost;
+      } else {
+        const remainingCost = cost - currentDailyBalance;
+        newDaily = 0;
+        newOneTime = Math.max(0, currentOneTimeBalance - remainingCost);
+      }
+
+      await db.update(users).set({ 
+        balance: newDaily, 
+        oneTimeBalance: newOneTime 
+      }).where(eq(users.id, user[0].id));
       await db.insert(usageLogs).values({
         id: uuidv4(),
         userId: user[0].id,

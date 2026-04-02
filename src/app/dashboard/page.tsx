@@ -95,14 +95,45 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
                   <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Daily Allowance</p>
                     <p style={{ fontSize: '1.25rem', fontWeight: 600 }}>$20.00</p>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Daily balance: ${user.balance?.toFixed(4)}</p>
                   </div>
                   <div style={{ background: 'rgba(124, 58, 237, 0.1)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(124, 58, 237, 0.2)' }}>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '4px' }}>Current Balance</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 600 }}>${user.balance?.toFixed(4)}</p>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '4px' }}>One-Time Credits</p>
+                    <p style={{ fontSize: '1.25rem', fontWeight: 600 }}>${user.oneTimeBalance?.toFixed(4)}</p>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--primary)' }}>Non-resetting</p>
+                  </div>
+                </div>
+
+                <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)', borderStyle: 'dashed' }}>
+                  <p style={{ fontSize: '0.85rem', marginBottom: '12px' }}>Redeem Credit Code</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      className="input-field" 
+                      placeholder="Enter NANA-XXXX..." 
+                      id="redeemInput"
+                    />
+                    <button className="btn-primary" onClick={async () => {
+                      const code = (document.getElementById('redeemInput') as HTMLInputElement).value;
+                      if (!code) return;
+                      const res = await fetch('/api/user/redeem', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code, apiKey: user.apiKey })
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        alert(`Successfully redeemed $${data.amount}!`);
+                        fetchUser(user.apiKey);
+                      } else {
+                        alert(data.error);
+                      }
+                    }}>
+                      Redeem
+                    </button>
                   </div>
                 </div>
               </div>
