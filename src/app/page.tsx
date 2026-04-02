@@ -37,9 +37,17 @@ export default function LandingPage() {
           <p style={{ color: 'var(--text-muted)', marginBottom: '24px', fontSize: '0.9rem' }}>
             Generate your unique NanaOne API keys and track your daily $20 credits.
           </p>
-          <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/dashboard')}>
-            Enter Dashboard <Rocket size={18} />
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/auth/signup')}>
+              Join NanaOne <Rocket size={18} />
+            </button>
+            <button className="btn-glass" style={{ width: '100%', background: 'rgba(255,255,255,0.05)' }} onClick={() => router.push('/auth/login')}>
+              Existing User Login
+            </button>
+            <button className="btn-glass" style={{ width: '100%', border: 'none', fontSize: '0.8rem', color: 'var(--text-muted)' }} onClick={() => router.push('/dashboard')}>
+              Go to Dashboard
+            </button>
+          </div>
         </div>
 
         <div className="glass-card" style={{ textAlign: 'center' }}>

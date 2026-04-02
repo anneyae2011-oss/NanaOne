@@ -2,6 +2,8 @@ import { pgTable, text, real, timestamp, integer, boolean } from 'drizzle-orm/pg
 
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
+  username: text('username').unique(),
+  phone: text('phone').unique(),
   name: text('name'),
   apiKey: text('api_key').unique(),
   balance: real('balance').default(20.0), // Daily balance
