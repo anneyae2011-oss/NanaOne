@@ -11,37 +11,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Code and API Key are required' }, { status: 400 });
     }
 
+    const normalizedCode = code.trim().toUpperCase();
+
     const user = await db.select().from(users).where(eq(users.apiKey, apiKey)).limit(1);
     if (user.length === 0) {
-      console.error('Redeem failed: User mismatch for API Key', apiKey);
-      return NextResponse.json({ error: 'User not found. Ensure your API key is correct.' }, { status: 404 });
+      return NextResponse.json({ error: 'User not found. Check your API key.' }, { status: 404 });
     }
 
-    const redeemCode = await db.select().from(redeemCodes).where(eq(redeemCodes.code, code)).limit(1);
+    const redeemCode = await db.select().from(redeemCodes).where(eq(redeemCodes.code, normalizedCode)).limit(1);
     
-    if (redeemCode.length === 0 || redeemCode[0].isUsed) {
-      return NextResponse.json({ error: 'Invalid or already used code' }, { status: 400 });
+    if (redeemCode.length === 0) {
+      return NextResponse.json({ error: 'Invalid code' }, { status: 400 });
     }
 
-    // Update user balance and mark code as used
+    if (redeemCode[0].isUsed) {
+      return NextResponse.json({ error: 'Code already used' }, { status: 400 });
+    }
+
+    // Perform updates sequentially if transaction is failing
     try {
-      await db.transaction(async (tx) => {
-        await tx.update(users)
-          .set({ oneTimeBalance: (user[0].oneTimeBalance || 0) + redeemCode[0].amount })
-          .where(eq(users.id, user[0].id));
-        
-        await tx.update(redeemCodes)
-          .set({ isUsed: true, usedBy: user[0].id })
-          .where(eq(redeemCodes.code, code));
-      });
-    } catch (txError) {
-      console.error('Transaction failed:', txError);
-      throw txError;
+      await db.update(redeemCodes)
+        .set({ isUsed: true, usedBy: user[0].id })
+        .where(eq(redeemCodes.code, normalizedCode));
+
+      await db.update(users)
+        .set({ oneTimeBalance: (user[0].oneTimeBalance || 0) + redeemCode[0].amount })
+        .where(eq(users.id, user[0].id));
+
+    } catch (dbError) {
+      console.error('Database update failed:', dbError);
+      return NextResponse.json({ error: 'Failed to update balance' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, amount: redeemCode[0].amount });
   } catch (error) {
-    console.error('Redeem error:', error);
-    return NextResponse.json({ error: 'Redemption failed' }, { status: 500 });
+    console.error('General Redeem error:', error);
+    return NextResponse.json({ error: 'Redemption failed unexpectedly' }, { status: 500 });
   }
 }
