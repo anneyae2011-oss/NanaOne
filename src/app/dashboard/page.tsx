@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Key, Copy, Check, Info, Zap, Layout, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Key, Copy, Check, Info, Zap, Layout, ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [models, setModels] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inputKey, setInputKey] = useState('');
@@ -44,26 +45,53 @@ export default function Dashboard() {
       console.error('Provisioning failed');
     } finally {
       setGenerating(false);
+      setLoading(false);
     }
   };
 
   const fetchUser = async (key: string) => {
-    const res = await fetch(`/api/user?key=${key}`);
-    if (res.ok) {
-      const data = await res.json();
-      setUser(data);
-      localStorage.setItem('nana_api_key', key);
-    } else {
-      // If key is invalid, provision a new one
+    try {
+      const res = await fetch(`/api/user?key=${key}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
+        localStorage.setItem('nana_api_key', key);
+      } else {
+        await provisionAnonymous();
+      }
+    } catch (e) {
       await provisionAnonymous();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchModels = async () => {
+    try {
+      const res = await fetch('/v1/models');
+      if (res.ok) {
+        const data = await res.json();
+        setModels(data.data || []);
+      }
+    } catch (e) {
+      console.error('Models fetch failed');
     }
   };
 
   const copyToClipboard = () => {
+    if (!user?.apiKey) return;
     navigator.clipboard.writeText(user.apiKey);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (loading && !user) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <Loader2 className="animate-spin" style={{ color: 'var(--primary)' }} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px' }}>
@@ -74,19 +102,17 @@ export default function Dashboard() {
         <ArrowLeft size={16} /> Back to Home
       </button>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 300px', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           <div className="glass-card">
             <h2 className="title-gradient" style={{ marginBottom: '24px' }}>API Identity</h2>
             
             {!user ? (
-              <div style={{ textAlign: 'center', padding: '20px' }}>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>You haven't generated an API key yet.</p>
-                <button className="btn-primary" onClick={generateKey} disabled={generating} style={{ margin: '0 auto' }}>
-                  {generating ? 'Generating...' : 'Create New NanaOne Key'}
-                </button>
-              </div>
+               <div style={{ textAlign: 'center', padding: '20px' }}>
+                 <Loader2 className="animate-spin" style={{ margin: '0 auto', color: 'var(--primary)' }} />
+                 <p style={{ color: 'var(--text-muted)', marginTop: '12px' }}>Provisioning access...</p>
+               </div>
             ) : (
               <div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
@@ -108,7 +134,7 @@ export default function Dashboard() {
                   <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Daily Allowance</p>
                     <p style={{ fontSize: '1.25rem', fontWeight: 600 }}>$20.00</p>
-                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Daily balance: ${user.balance?.toFixed(4)}</p>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Remaining: ${user.balance?.toFixed(4)}</p>
                   </div>
                   <div style={{ background: 'rgba(124, 58, 237, 0.1)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(124, 58, 237, 0.2)' }}>
                     <p style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '4px' }}>One-Time Credits</p>
@@ -123,20 +149,21 @@ export default function Dashboard() {
                     <input 
                       className="input-field" 
                       placeholder="Enter NANA-XXXX..." 
-                      id="redeemInput"
+                      value={inputKey}
+                      onChange={(e) => setInputKey(e.target.value)}
                     />
                     <button className="btn-primary" onClick={async () => {
-                      const code = (document.getElementById('redeemInput') as HTMLInputElement).value;
-                      if (!code) return;
+                      if (!inputKey) return;
                       const res = await fetch('/api/user/redeem', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code, apiKey: user.apiKey })
+                        body: JSON.stringify({ code: inputKey, apiKey: user.apiKey })
                       });
                       const data = await res.json();
                       if (data.success) {
                         alert(`Successfully redeemed $${data.amount}!`);
-                        fetchUser(user.apiKey);
+                        await fetchUser(user.apiKey);
+                        setInputKey('');
                       } else {
                         alert(data.error);
                       }

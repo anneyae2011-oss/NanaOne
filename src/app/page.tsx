@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Rocket, Key, ChevronRight, Zap, ExternalLink } from 'lucide-react';
+import { Shield, Rocket, ChevronRight } from 'lucide-react';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -37,13 +37,13 @@ export default function LandingPage() {
           </div>
           <h3 style={{ marginBottom: '12px', fontSize: '1.5rem' }}>User Portal</h3>
           <p style={{ color: 'var(--text-muted)', marginBottom: '32px', fontSize: '0.95rem', lineHeight: '1.6' }}>
-            Access the elite AI gateway instantly. No sign-up required. Your settings are saved to this browser.
+            Access the elite AI gateway. Generate unique keys, track credits, and manage your one-time balance.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/dashboard')}>
-                Enter Gateway <ChevronRight size={18} />
-              </button>
+              Go to Dashboard <Rocket size={18} />
+            </button>
           </div>
         </div>
 
@@ -57,7 +57,7 @@ export default function LandingPage() {
           </p>
           
            {!isAdmin ? (
-            <button className="btn-secondary" style={{ width: '100%' }} onClick={() => setIsAdmin(true)}>
+            <button className="btn-secondary" style={{ width: '100%', opacity: 0.8 }} onClick={() => setIsAdmin(true)}>
               Admin Login <Shield size={16} />
             </button>
           ) : (
