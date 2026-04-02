@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Rocket, Key, ChevronRight, Zap } from 'lucide-react';
+import { Shield, Rocket, ChevronRight } from 'lucide-react';
 
 export default function LandingPage() {
   const router = useRouter();
