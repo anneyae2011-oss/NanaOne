@@ -31,13 +31,41 @@ function estimateTokens(messages: any[]): number {
 
 const CHEAP_API_KEY = "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";
 const CHEAP_ENDPOINT = "https://integrate.api.nvidia.com/v1";
-const CHEAP_MODEL = "deepseek-ai/deepseek-v3.1";
+const CHEAP_MODELS = [
+  "deepseek-ai/deepseek-v3.1",
+  "moonshotai/kimi-k2.5",
+  "openai/gpt-oss-120b",
+  "moonshotai/kimi-k2-instruct-0905",
+  "moonshotai/kimi-k2-instruct"
+];
+
+async function callCheapAI(messages: any[], maxTokens: number): Promise<string> {
+  for (const model of CHEAP_MODELS) {
+    try {
+      console.log(`[CURATOR] Attempting with ${model}...`);
+      const resp = await axios.post(`${CHEAP_ENDPOINT}/chat/completions`, {
+        model: model,
+        messages: messages,
+        temperature: 0.1,
+        max_tokens: maxTokens,
+      }, { 
+        headers: { 'Authorization': `Bearer ${CHEAP_API_KEY}`, 'Content-Type': 'application/json' },
+        timeout: 15000 // 15s timeout before trying next model
+      });
+      console.log(`[CURATOR] Success with model: ${model}`);
+      return resp.data.choices[0].message.content;
+    } catch (e: any) {
+      console.error(`[CURATOR] Model ${model} failed:`, e.message);
+    }
+  }
+  throw new Error("All cheap models exhausted");
+}
 
 async function curateContext(messages: any[]): Promise<any[]> {
   if (!messages || messages.length <= 2) return messages;
 
   const initialTokens = estimateTokens(messages);
-  console.log(`[CURATOR] Initial tokens: ${initialTokens}. Evaluated for cheap curation...`);
+  console.log(`[CURATOR] Curation requested for ${initialTokens} tokens...`);
 
   // 1. Identification
   const systemMsgIndex = messages.findIndex(m => m.role === 'system');
@@ -54,41 +82,30 @@ async function curateContext(messages: any[]): Promise<any[]> {
   const recentHistory = midHistory.slice(-6);
   const oldHistory = midHistory.slice(0, -6);
 
-  // 2. Truncation vs Summarization Decision
-  // Calculate tokens IF we just deleted oldHistory entirely
+  // 2. Truncation Test
   const baselineMessages = [];
   if (systemPrompt) baselineMessages.push(systemPrompt);
   baselineMessages.push(...recentHistory);
   baselineMessages.push(lastUserMsg);
   
   const baselineTokens = estimateTokens(baselineMessages);
-  console.log(`[CURATOR] Truncation test: Baseline without old history is ${baselineTokens} tokens.`);
 
   if (oldHistory.length === 0) return messages;
 
-  // RULE: If truncation alone makes it < 8000, just truncate (FREE)
   if (baselineTokens < 8000) {
-    console.log('[CURATOR] Truncation alone works. Dropping old history (No AI call).');
+    console.log('[CURATOR] Truncation alone works. Skipping AI.');
     return baselineMessages;
   }
 
-  // 3. Stage 1: Summarize Old History using CHEAP model
-  console.log(`[CURATOR] Truncation not enough (${baselineTokens} pts). Calling Cheap AI (${CHEAP_MODEL})...`);
+  // 3. Stage 1: History Summarization (with Fallbacks)
+  console.log(`[CURATOR] Summarizing ${oldHistory.length} msgs...`);
   let currentMessages = [...baselineMessages];
   try {
-    const resp = await axios.post(`${CHEAP_ENDPOINT}/chat/completions`, {
-      model: CHEAP_MODEL,
-      messages: [
-        { role: 'system', content: 'Summarize the following historical conversation into a SINGLE SHORT PARAGRAPH. Be extremely brief.' },
-        { role: 'user', content: JSON.stringify(oldHistory) }
-      ],
-      temperature: 0.1,
-      max_tokens: 500,
-    }, { 
-      headers: { 'Authorization': `Bearer ${CHEAP_API_KEY}`, 'Content-Type': 'application/json' } 
-    });
+    const summary = await callCheapAI([
+      { role: 'system', content: 'Summarize the following historical conversation into a SINGLE SHORT PARAGRAPH. Core facts ONLY. Be extremely brief.' },
+      { role: 'user', content: JSON.stringify(oldHistory) }
+    ], 500);
     
-    const summary = resp.data.choices[0].message.content;
     const reconstructed: any[] = [];
     if (systemPrompt) reconstructed.push(systemPrompt);
     reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
@@ -96,36 +113,28 @@ async function curateContext(messages: any[]): Promise<any[]> {
     reconstructed.push(lastUserMsg);
     
     currentMessages = reconstructed;
-    console.log(`[CURATOR] Cheap History Summarization Complete. New Total: ${estimateTokens(currentMessages)}`);
-  } catch (e: any) {
-    console.error('[CURATOR] Cheap Summarization Failed. Falling back to Truncation.', e.response?.data || e.message);
+    console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
+  } catch (e) {
+    console.error('[CURATOR] History curation failed entirely. Truncating.');
     return baselineMessages; 
   }
 
-  // 4. Stage 2: Summarize System Prompt using CHEAP model
+  // 4. Stage 2: System Prompt Fallback (with Fallbacks)
   if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
-    console.log('[CURATOR] Still over 8k. Using Cheap AI to shrink System Prompt...');
+    console.log('[CURATOR] Still bulky. Summarizing System Prompt...');
     try {
-      const resp = await axios.post(`${CHEAP_ENDPOINT}/chat/completions`, {
-        model: CHEAP_MODEL,
-        messages: [
-          { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules.' },
-          { role: 'user', content: systemPrompt.content }
-        ],
-        temperature: 0.1,
-        max_tokens: 800,
-      }, { 
-        headers: { 'Authorization': `Bearer ${CHEAP_API_KEY}`, 'Content-Type': 'application/json' } 
-      });
+      const systemSummary = await callCheapAI([
+        { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
+        { role: 'user', content: systemPrompt.content }
+      ], 800);
       
-      const systemSummary = resp.data.choices[0].message.content;
       const sIndex = currentMessages.findIndex(m => m.role === 'system');
       if (sIndex !== -1) {
         currentMessages[sIndex] = { role: 'system', content: systemSummary };
       }
-      console.log(`[CURATOR] Cheap System Summarization Complete. Final Total: ${estimateTokens(currentMessages)}`);
-    } catch (e: any) {
-      console.error('[CURATOR] Cheap System Summarization Failed.', e.response?.data || e.message);
+      console.log(`[CURATOR] System prompt shrunk. Final Total: ${estimateTokens(currentMessages)}`);
+    } catch (e) {
+      console.error('[CURATOR] System curation failed entirely.');
     }
   }
 
