@@ -30,22 +30,23 @@ function estimateTokens(messages: any[]): number {
 }
 
 async function curateContext(messages: any[], endpoint: string, key: string, model: string): Promise<any[]> {
-  if (messages.length <= 1) return messages;
+  if (messages.length <= 2) return messages;
 
-  const latestMessage = messages[messages.length - 1];
-  const history = messages.slice(0, -1);
+  // Keep the last 2 messages raw
+  const latestMessages = messages.slice(-2);
+  const history = messages.slice(0, -2);
 
-  console.log(`[CURATOR] Triggered for ${messages.length} messages. Summarizing...`);
+  console.log(`[CURATOR] Triggered for ${messages.length} messages. Summarizing deep history...`);
 
   try {
     const response = await axios.post(`${endpoint}/chat/completions`, {
       model: model,
       messages: [
-        { role: 'system', content: 'You are a NanaOne Context Curator. Analyze the following conversation history. Create a high-fidelity, detailed summary of roughly 3,000 to 4,000 words that merges all existing context, critical facts, and current discussion states. This summary will be used to maintain infinite context while staying efficient. Ensure no major plot or factual points are lost.' },
+        { role: 'system', content: 'You are a NanaOne Context Curator. Analyze the following conversation history. Create a high-fidelity, detailed summary of approximately 2,500 tokens that merges all earlier context, facts, and states. This will be the context for the immediate turn. Focus on deep history while leaving recent events for the raw tail.' },
         { role: 'user', content: JSON.stringify(history) }
       ],
       temperature: 0.2,
-      max_tokens: 6000, // Handle up to ~4500 words
+      max_tokens: 3000, // Capacity for the 2500 token target
     }, {
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }
     });
@@ -53,7 +54,7 @@ async function curateContext(messages: any[], endpoint: string, key: string, mod
     const summary = response.data.choices[0].message.content;
     return [
       { role: 'system', content: `[CURATED CONTEXT]: ${summary}` },
-      latestMessage
+      ...latestMessages
     ];
   } catch (error) {
     console.error('Curator Error:', error);
@@ -99,7 +100,7 @@ export async function POST(req: Request) {
 
   // CONTEXT CURATOR LOGIC
   const estimatedInputTokens = estimateTokens(body.messages || []);
-  if (estimatedInputTokens > 6000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
+  if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator...`);
     body.messages = await curateContext(
       body.messages, 
