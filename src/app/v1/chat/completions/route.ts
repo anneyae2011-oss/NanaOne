@@ -62,11 +62,16 @@ const CHEAP_PROVIDERS = [
   }
 ];
 
-async function callCheapAI(messages: any[], maxTokens: number): Promise<string> {
-  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 00:35:00 2026)`);
+async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>): Promise<string> {
+  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 00:45:00 2026)`);
   for (const provider of CHEAP_PROVIDERS) {
+    if (blacklist.has(provider.name)) {
+      console.log(`[CURATOR] Bypassing ${provider.name} (Previously failed in this request).`);
+      continue;
+    }
     if (!provider.key) {
       console.log(`[CURATOR] Skipping ${provider.name} (Key is MISSING).`);
+      blacklist.add(provider.name);
       continue;
     }
     for (const model of provider.models) {
@@ -80,7 +85,7 @@ async function callCheapAI(messages: any[], maxTokens: number): Promise<string> 
           max_tokens: maxTokens,
         }, { 
           headers: { 'Authorization': `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
-          timeout: 15000 
+          timeout: 10000 
         });
         console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
         return resp.data.choices[0].message.content;
@@ -88,6 +93,9 @@ async function callCheapAI(messages: any[], maxTokens: number): Promise<string> 
         console.error(`[CURATOR ERROR] ${provider.name}/${model} | Status: ${e.response?.status} | Data: ${JSON.stringify(e.response?.data || e.message)}`);
       }
     }
+    // If we reach here, all models for this provider failed
+    console.log(`[CURATOR] Blacklisting provider for current request: ${provider.name}`);
+    blacklist.add(provider.name);
   }
   throw new Error("All cheap providers exhausted or keys missing");
 }
@@ -97,6 +105,8 @@ async function curateContext(messages: any[]): Promise<any[]> {
 
   const initialTokens = estimateTokens(messages);
   console.log(`[CURATOR] Total input: ${initialTokens} tokens.`);
+
+  const failedProviders = new Set<string>();
 
   // ... (Identification remains same)
   const systemMsgIndex = messages.findIndex(m => m.role === 'system');
@@ -121,7 +131,6 @@ async function curateContext(messages: any[]): Promise<any[]> {
   console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
   let currentMessages = [...baselineMessages];
   try {
-    // Format history as readable text instead of JSON
     const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
 
     const summary = await callCheapAI([
@@ -138,7 +147,29 @@ Rules:
 - Output ONLY the summary, no extra text` 
       },
       { role: 'user', content: historyText }
-    ], 2500);
+    ], 2500, failedProviders);
+    
+    const reconstructed: any[] = [];
+    if (systemPrompt) reconstructed.push(systemPrompt);
+    reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
+    reconstructed.push(...recentHistory);
+    reconstructed.push(lastUserMsg);
+    
+    currentMessages = reconstructed;
+    console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
+  } catch (e) {
+    console.error('[CURATOR] History curation failed entirely. Truncating.');
+    // Even if it failed, currentMessages is still baselineMessages (truncated)
+  }
+
+  // 4. Stage 2: System Prompt Fallback (with Fallbacks)
+  if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
+    console.log('[CURATOR] Still bulky. Summarizing System Prompt...');
+    try {
+      const systemSummary = await callCheapAI([
+        { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
+        { role: 'user', content: systemPrompt.content }
+      ], 800, failedProviders);
     
     const reconstructed: any[] = [];
     if (systemPrompt) reconstructed.push(systemPrompt);
