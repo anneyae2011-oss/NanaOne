@@ -41,11 +41,11 @@ async function curateContext(messages: any[], endpoint: string, key: string, mod
     const response = await axios.post(`${endpoint}/chat/completions`, {
       model: model,
       messages: [
-        { role: 'system', content: 'You are a NanaOne Context Curator. Analyze the following conversation history, which likely contains a previous [CURATED CONTEXT] summary and new messages. Create a NEW, consolidated summary that merges all existing context, critical facts, and current discussion states. This summary will be the ONLY context for the next turn. Be extremely concise but thorough.' },
+        { role: 'system', content: 'You are a NanaOne Context Curator. Analyze the following conversation history. Create a high-fidelity, detailed summary of roughly 3,000 to 4,000 words that merges all existing context, critical facts, and current discussion states. This summary will be used to maintain infinite context while staying efficient. Ensure no major plot or factual points are lost.' },
         { role: 'user', content: JSON.stringify(history) }
       ],
-      temperature: 0.2, // Lower temperature for more factual summaries
-      max_tokens: 800, // Safety cap on summary length
+      temperature: 0.2,
+      max_tokens: 6000, // Handle up to ~4500 words
     }, {
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }
     });
