@@ -54,17 +54,16 @@ const CHEAP_PROVIDERS = [
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number): Promise<string> {
-  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 00:24:00 2026)`);
+  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 00:35:00 2026)`);
   for (const provider of CHEAP_PROVIDERS) {
     if (!provider.key) {
       console.log(`[CURATOR] Skipping ${provider.name} (Key is MISSING).`);
       continue;
     }
-    console.log(`[CURATOR] Trying provider: ${provider.name}...`);
     for (const model of provider.models) {
       try {
         const keyForLog = `${provider.key.substring(0, 5)}...${provider.key.substring(provider.key.length - 3)}`;
-        console.log(`[CURATOR] Attempting with ${model} (${provider.name}). Key format: ${keyForLog}`);
+        console.log(`[CURATOR] Trying ${model} (${provider.name}) | Key: ${keyForLog}`);
         const resp = await axios.post(`${provider.endpoint}/chat/completions`, {
           model: model,
           messages: messages,
@@ -77,7 +76,7 @@ async function callCheapAI(messages: any[], maxTokens: number): Promise<string> 
         console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
         return resp.data.choices[0].message.content;
       } catch (e: any) {
-        console.error(`[CURATOR] ${provider.name}/${model} failed (Status: ${e.response?.status}):`, e.message);
+        console.error(`[CURATOR ERROR] ${provider.name}/${model} | Status: ${e.response?.status} | Data: ${JSON.stringify(e.response?.data || e.message)}`);
       }
     }
   }
@@ -88,24 +87,20 @@ async function curateContext(messages: any[]): Promise<any[]> {
   if (!messages || messages.length <= 2) return messages;
 
   const initialTokens = estimateTokens(messages);
-  console.log(`[CURATOR] Curation requested for ${initialTokens} tokens...`);
+  console.log(`[CURATOR] Total input: ${initialTokens} tokens.`);
 
-  // 1. Identification
+  // ... (Identification remains same)
   const systemMsgIndex = messages.findIndex(m => m.role === 'system');
   const systemPrompt = systemMsgIndex !== -1 ? messages[systemMsgIndex] : null;
-  
   const lastUserMsgIndex = [...messages].reverse().findIndex(m => m.role === 'user');
   if (lastUserMsgIndex === -1) return messages; 
   const lastUserIndex = (messages.length - 1) - lastUserMsgIndex;
   const lastUserMsg = messages[lastUserIndex];
-  
   const startIndex = systemMsgIndex !== -1 ? systemMsgIndex + 1 : 0;
   const midHistory = messages.slice(startIndex, lastUserIndex);
-  
   const recentHistory = midHistory.slice(-6);
   const oldHistory = midHistory.slice(0, -6);
 
-  // 2. Baseline & History Check
   const baselineMessages = [];
   if (systemPrompt) baselineMessages.push(systemPrompt);
   baselineMessages.push(...recentHistory);
@@ -114,9 +109,12 @@ async function curateContext(messages: any[]): Promise<any[]> {
   if (oldHistory.length === 0) return messages;
 
   // 3. Stage 1: History Summarization (ALWAYS attempt if history exists and over 8k)
-  console.log(`[CURATOR] Mandatory Summarization for ${oldHistory.length} msgs...`);
+  console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
   let currentMessages = [...baselineMessages];
   try {
+    // Format history as readable text instead of JSON
+    const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
+
     const summary = await callCheapAI([
       { 
         role: 'system', 
@@ -130,7 +128,7 @@ Rules:
 - Be aggressive but don't invent information
 - Output ONLY the summary, no extra text` 
       },
-      { role: 'user', content: JSON.stringify(oldHistory) }
+      { role: 'user', content: historyText }
     ], 2500);
     
     const reconstructed: any[] = [];
