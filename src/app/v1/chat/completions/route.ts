@@ -32,92 +32,86 @@ function estimateTokens(messages: any[]): number {
 async function curateContext(messages: any[], endpoint: string, key: string, model: string): Promise<any[]> {
   if (!messages || messages.length <= 2) return messages;
 
-  console.log(`[CURATOR] Starting curation for ${messages.length} messages...`);
+  const initialTokens = estimateTokens(messages);
+  console.log(`[CURATOR] Initial tokens: ${initialTokens}. Starting multi-stage curation...`);
 
   // 1. Identification
   const systemMsgIndex = messages.findIndex(m => m.role === 'system');
   const systemPrompt = systemMsgIndex !== -1 ? messages[systemMsgIndex] : null;
   
   const lastUserMsgIndex = [...messages].reverse().findIndex(m => m.role === 'user');
-  if (lastUserMsgIndex === -1) return messages; // No user message to anchor with
+  if (lastUserMsgIndex === -1) return messages; 
   const lastUserIndex = (messages.length - 1) - lastUserMsgIndex;
   const lastUserMsg = messages[lastUserIndex];
   
-  // Middle History = Everything between system prompt (if any) and last user message
   const startIndex = systemMsgIndex !== -1 ? systemMsgIndex + 1 : 0;
   const midHistory = messages.slice(startIndex, lastUserIndex);
   
-  // Last 3 Exchanges = Last 6 messages of middle history
   const recentHistory = midHistory.slice(-6);
   const oldHistory = midHistory.slice(0, -6);
 
-  console.log(`[CURATOR] Identified: Old History (${oldHistory.length} msgs), Recent History (${recentHistory.length} msgs)`);
+  console.log(`[CURATOR] Breakdown: System(${systemPrompt ? estimateTokens([systemPrompt]) : 0}), OldHist(${estimateTokens(oldHistory)}), RecentHist(${estimateTokens(recentHistory)}), LastUser(${estimateTokens([lastUserMsg])})`);
 
   let currentMessages = [...messages];
 
   // 2. Summarize Old History
   if (oldHistory.length > 0) {
     try {
-      console.log('[CURATOR] Summarizing Old History...');
+      console.log(`[CURATOR] Summarizing ${oldHistory.length} old messages...`);
       const resp = await axios.post(`${endpoint}/chat/completions`, {
         model: model,
         messages: [
           { 
             role: 'system', 
-            content: 'You are a NanaOne Context Curator. Summarize the following historical conversation into a detailed, high-fidelity summary of approximately 2,500 tokens. This summary will serve as the primary context for future turns. Preserve all key facts, names, outcomes, and character states.' 
+            content: 'You are a NanaOne Context Curator. Summarize the following historical conversation into a SINGLE SHORT PARAGRAPH. Core facts ONLY. Be extremely brief.' 
           },
           { role: 'user', content: JSON.stringify(oldHistory) }
         ],
         temperature: 0.2,
-        max_tokens: 3000, 
+        max_tokens: 1000, 
       }, { 
-        headers: { 
-          'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json'
-        } 
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' } 
       });
       
       const summary = resp.data.choices[0].message.content;
       const reconstructed: any[] = [];
       if (systemPrompt) reconstructed.push(systemPrompt);
-      reconstructed.push({ role: 'user', content: `[CURATED HISTORY]: ${summary}` });
+      reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
       reconstructed.push(...recentHistory);
       reconstructed.push(lastUserMsg);
       
       currentMessages = reconstructed;
-      console.log(`[CURATOR] History summarized. New count: ${estimateTokens(currentMessages)} tokens.`);
+      console.log(`[CURATOR] Stage 1 (History) Complete. New Total: ${estimateTokens(currentMessages)}`);
     } catch (e: any) {
-      console.error('[CURATOR] History Summarization Failed:', e.response?.data || e.message);
+      console.error('[CURATOR] History Summarization Critical Failure:', e.response?.data || e.message);
     }
   }
 
   // 3. Fallback: Summarize System Prompt if still > 8000
-  if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
-    console.log('[CURATOR] Still over 8k. Summarizing System Prompt...');
+  const postHistoryTokens = estimateTokens(currentMessages);
+  if (postHistoryTokens > 8000 && systemPrompt) {
+    console.log(`[CURATOR] Still ${postHistoryTokens} tokens. Summarizing System Prompt as fallback...`);
     try {
       const resp = await axios.post(`${endpoint}/chat/completions`, {
         model: model,
         messages: [
-          { role: 'system', content: 'Summarize the following System Instructions into a concise version while preserving ALL rules, persona, and traits.' },
+          { role: 'system', content: 'Summarize the following System Instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
           { role: 'user', content: systemPrompt.content }
         ],
         temperature: 0.2,
+        max_tokens: 1500,
       }, { 
-        headers: { 
-          'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json'
-        } 
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' } 
       });
       
       const systemSummary = resp.data.choices[0].message.content;
-      // Replace the system prompt in currentMessages
       const sIndex = currentMessages.findIndex(m => m.role === 'system');
       if (sIndex !== -1) {
         currentMessages[sIndex] = { role: 'system', content: systemSummary };
       }
-      console.log(`[CURATOR] System prompt summarized. Final count: ${estimateTokens(currentMessages)} tokens.`);
+      console.log(`[CURATOR] Stage 2 (System) Complete. Final Total: ${estimateTokens(currentMessages)}`);
     } catch (e: any) {
-      console.error('[CURATOR] System Summarization Failed:', e.response?.data || e.message);
+      console.error('[CURATOR] System Summarization Critical Failure:', e.response?.data || e.message);
     }
   }
 
