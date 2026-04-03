@@ -136,8 +136,8 @@ export async function POST(req: Request) {
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k OR over hard limit)
-  if ((estimatedInputTokens > 8000 || estimatedInputTokens > contextLimit) && s[0].upstreamEndpoint && s[0].upstreamKey) {
+  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k)
+  if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator before limit check...`);
     body.messages = await curateContext(
       body.messages, 
@@ -151,9 +151,6 @@ export async function POST(req: Request) {
   }
 
   // 3. GLOBAL LIMITS VALIDATION (413 Check - Run AFTER potential curation)
-  const contextLimit = s[0].contextLimit || 16000;
-  const maxOutputLimit = s[0].maxOutputTokens || 4000;
-
   if (estimatedInputTokens > contextLimit) {
     console.error(`[LIMIT EXCEEDED] Final Context Size: ${estimatedInputTokens} > ${contextLimit}`);
     return NextResponse.json({ 
