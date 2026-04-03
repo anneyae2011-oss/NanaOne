@@ -25,6 +25,8 @@ export const settings = pgTable('settings', {
   upstreamEndpoint: text('upstream_endpoint'),
   upstreamKey: text('upstream_key'),
   adminPassword: text('admin_password'),
+  contextLimit: integer('context_limit').default(16000),
+  maxOutputTokens: integer('max_output_tokens').default(4000),
 });
 
 export const models = pgTable('models', {

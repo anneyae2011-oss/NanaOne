@@ -8,6 +8,8 @@ export default function AdminPage() {
   const router = useRouter();
   const [endpoint, setEndpoint] = useState('');
   const [key, setKey] = useState('');
+  const [contextLimit, setContextLimit] = useState(16000);
+  const [maxOutputTokens, setMaxOutputTokens] = useState(4000);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -23,6 +25,8 @@ export default function AdminPage() {
       .then(data => {
         setEndpoint(data.upstreamEndpoint || '');
         setKey(data.upstreamKey || '');
+        setContextLimit(data.contextLimit || 16000);
+        setMaxOutputTokens(data.maxOutputTokens || 4000);
       });
   }, [router]);
 
@@ -30,7 +34,7 @@ export default function AdminPage() {
     setSaving(true);
     await fetch('/api/admin/settings', {
       method: 'POST',
-      body: JSON.stringify({ endpoint, key }),
+      body: JSON.stringify({ endpoint, key, contextLimit, maxOutputTokens }),
     });
     setSaving(false);
     alert('Settings saved and models refreshed!');
@@ -75,6 +79,33 @@ export default function AdminPage() {
               onChange={(e) => setKey(e.target.value)}
               placeholder="sk-..."
             />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RefreshCw size={14} /> Context Limit (Tokens)
+              </label>
+              <input 
+                type="number"
+                className="input-field" 
+                value={contextLimit} 
+                onChange={(e) => setContextLimit(parseInt(e.target.value))}
+                placeholder="16000"
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RefreshCw size={14} /> Max Output Tokens
+              </label>
+              <input 
+                type="number"
+                className="input-field" 
+                value={maxOutputTokens} 
+                onChange={(e) => setMaxOutputTokens(parseInt(e.target.value))}
+                placeholder="4000"
+              />
+            </div>
           </div>
 
           <button 

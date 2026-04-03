@@ -98,8 +98,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Gateway settings not initialized' }, { status: 500, headers: CORS_HEADERS });
   }
 
-  // CONTEXT CURATOR LOGIC
+  // GLOBAL LIMITS VALIDATION (413 Check)
   const estimatedInputTokens = estimateTokens(body.messages || []);
+  const contextLimit = s[0].contextLimit || 16000;
+  const maxOutputLimit = s[0].maxOutputTokens || 4000;
+
+  if (estimatedInputTokens > contextLimit) {
+    console.error(`[LIMIT EXCEEDED] Context Size: ${estimatedInputTokens} > ${contextLimit}`);
+    return NextResponse.json({ 
+      error: {
+        message: `Context size too large (${estimatedInputTokens} tokens). Global limit is ${contextLimit}.`,
+        type: 'context_too_large',
+        code: 413
+      }
+    }, { status: 413, headers: CORS_HEADERS });
+  }
+
+  if (body.max_tokens && body.max_tokens > maxOutputLimit) {
+    console.error(`[LIMIT EXCEEDED] Output Tokens: ${body.max_tokens} > ${maxOutputLimit}`);
+    return NextResponse.json({ 
+      error: {
+        message: `Request exceeds max output tokens (${body.max_tokens}). Global limit is ${maxOutputLimit}.`,
+        type: 'max_tokens_exceeded',
+        code: 413
+      }
+    }, { status: 413, headers: CORS_HEADERS });
+  }
+
+  // CONTEXT CURATOR LOGIC (Run only if within context limit but above curator trigger)
   if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator...`);
     body.messages = await curateContext(
