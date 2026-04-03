@@ -16,8 +16,8 @@ export async function POST(req: Request) {
   await db.update(settings).set({
     upstreamEndpoint: endpoint,
     upstreamKey: key,
-    contextLimit: contextLimit ? parseInt(contextLimit) : 16000,
-    maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) : 4000,
+    contextLimit: Number(contextLimit) || 16000,
+    maxOutputTokens: Number(maxOutputTokens) || 4000,
   }).where(eq(settings.id, 1));
 
   // Refresh models after updating provider

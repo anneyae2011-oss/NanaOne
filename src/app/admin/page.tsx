@@ -10,7 +10,6 @@ export default function AdminPage() {
   const [key, setKey] = useState('');
   const [contextLimit, setContextLimit] = useState(16000);
   const [maxOutputTokens, setMaxOutputTokens] = useState(4000);
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -172,7 +171,7 @@ export default function AdminPage() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '8px' }}>
           <span>Pricing</span>
-          <span>$8/1M Input, $25/1M Output</span>
+          <span>$15/1M Input, $75/1M Output</span>
         </div>
       </div>
     </div>
