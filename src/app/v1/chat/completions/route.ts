@@ -125,7 +125,7 @@ Rules:
 - Output ONLY the summary, no extra text` 
       },
       { role: 'user', content: JSON.stringify(oldHistory) }
-    ], 3500);
+    ], 4000);
     
     const reconstructed: any[] = [];
     if (systemPrompt) reconstructed.push(systemPrompt);
