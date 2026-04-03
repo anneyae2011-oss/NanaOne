@@ -90,7 +90,6 @@ export default function AdminPage() {
                 placeholder="4000"
               />
             </div>
-          </div>
 
           <button 
             className="btn-primary" 
