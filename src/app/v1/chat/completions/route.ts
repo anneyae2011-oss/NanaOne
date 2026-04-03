@@ -99,23 +99,16 @@ async function curateContext(messages: any[]): Promise<any[]> {
   const recentHistory = midHistory.slice(-6);
   const oldHistory = midHistory.slice(0, -6);
 
-  // 2. Truncation Test
+  // 2. Baseline & History Check
   const baselineMessages = [];
   if (systemPrompt) baselineMessages.push(systemPrompt);
   baselineMessages.push(...recentHistory);
   baselineMessages.push(lastUserMsg);
   
-  const baselineTokens = estimateTokens(baselineMessages);
-
   if (oldHistory.length === 0) return messages;
 
-  if (baselineTokens < 8000) {
-    console.log('[CURATOR] Truncation alone works. Skipping AI.');
-    return baselineMessages;
-  }
-
-  // 3. Stage 1: History Summarization (with Fallbacks)
-  console.log(`[CURATOR] Summarizing ${oldHistory.length} msgs...`);
+  // 3. Stage 1: History Summarization (ALWAYS attempt if history exists)
+  console.log(`[CURATOR] Mandatory Summarization for ${oldHistory.length} msgs...`);
   let currentMessages = [...baselineMessages];
   try {
     const summary = await callCheapAI([
