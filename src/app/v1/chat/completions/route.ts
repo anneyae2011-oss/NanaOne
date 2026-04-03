@@ -29,11 +29,15 @@ function estimateTokens(messages: any[]): number {
   return Math.ceil(totalChars / 4);
 }
 
-async function curateContext(messages: any[], endpoint: string, key: string, model: string): Promise<any[]> {
+const CHEAP_API_KEY = "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";
+const CHEAP_ENDPOINT = "https://integrate.api.nvidia.com/v1";
+const CHEAP_MODEL = "deepseek-ai/deepseek-v3.1";
+
+async function curateContext(messages: any[]): Promise<any[]> {
   if (!messages || messages.length <= 2) return messages;
 
   const initialTokens = estimateTokens(messages);
-  console.log(`[CURATOR] Initial tokens: ${initialTokens}. Starting multi-stage curation...`);
+  console.log(`[CURATOR] Initial tokens: ${initialTokens}. Evaluated for cheap curation...`);
 
   // 1. Identification
   const systemMsgIndex = messages.findIndex(m => m.role === 'system');
@@ -50,58 +54,68 @@ async function curateContext(messages: any[], endpoint: string, key: string, mod
   const recentHistory = midHistory.slice(-6);
   const oldHistory = midHistory.slice(0, -6);
 
-  console.log(`[CURATOR] Breakdown: System(${systemPrompt ? estimateTokens([systemPrompt]) : 0}), OldHist(${estimateTokens(oldHistory)}), RecentHist(${estimateTokens(recentHistory)}), LastUser(${estimateTokens([lastUserMsg])})`);
+  // 2. Truncation vs Summarization Decision
+  // Calculate tokens IF we just deleted oldHistory entirely
+  const baselineMessages = [];
+  if (systemPrompt) baselineMessages.push(systemPrompt);
+  baselineMessages.push(...recentHistory);
+  baselineMessages.push(lastUserMsg);
+  
+  const baselineTokens = estimateTokens(baselineMessages);
+  console.log(`[CURATOR] Truncation test: Baseline without old history is ${baselineTokens} tokens.`);
 
-  let currentMessages = [...messages];
+  if (oldHistory.length === 0) return messages;
 
-  // 2. Summarize Old History
-  if (oldHistory.length > 0) {
-    try {
-      console.log(`[CURATOR] Summarizing ${oldHistory.length} old messages...`);
-      const resp = await axios.post(`${endpoint}/chat/completions`, {
-        model: model,
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are a NanaOne Context Curator. Summarize the following historical conversation into a SINGLE SHORT PARAGRAPH. Core facts ONLY. Be extremely brief.' 
-          },
-          { role: 'user', content: JSON.stringify(oldHistory) }
-        ],
-        temperature: 0.2,
-        max_tokens: 1000, 
-      }, { 
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' } 
-      });
-      
-      const summary = resp.data.choices[0].message.content;
-      const reconstructed: any[] = [];
-      if (systemPrompt) reconstructed.push(systemPrompt);
-      reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
-      reconstructed.push(...recentHistory);
-      reconstructed.push(lastUserMsg);
-      
-      currentMessages = reconstructed;
-      console.log(`[CURATOR] Stage 1 (History) Complete. New Total: ${estimateTokens(currentMessages)}`);
-    } catch (e: any) {
-      console.error('[CURATOR] History Summarization Critical Failure:', e.response?.data || e.message);
-    }
+  // RULE: If truncation alone makes it < 8000, just truncate (FREE)
+  if (baselineTokens < 8000) {
+    console.log('[CURATOR] Truncation alone works. Dropping old history (No AI call).');
+    return baselineMessages;
   }
 
-  // 3. Fallback: Summarize System Prompt if still > 8000
-  const postHistoryTokens = estimateTokens(currentMessages);
-  if (postHistoryTokens > 8000 && systemPrompt) {
-    console.log(`[CURATOR] Still ${postHistoryTokens} tokens. Summarizing System Prompt as fallback...`);
+  // 3. Stage 1: Summarize Old History using CHEAP model
+  console.log(`[CURATOR] Truncation not enough (${baselineTokens} pts). Calling Cheap AI (${CHEAP_MODEL})...`);
+  let currentMessages = [...baselineMessages];
+  try {
+    const resp = await axios.post(`${CHEAP_ENDPOINT}/chat/completions`, {
+      model: CHEAP_MODEL,
+      messages: [
+        { role: 'system', content: 'Summarize the following historical conversation into a SINGLE SHORT PARAGRAPH. Be extremely brief.' },
+        { role: 'user', content: JSON.stringify(oldHistory) }
+      ],
+      temperature: 0.1,
+      max_tokens: 500,
+    }, { 
+      headers: { 'Authorization': `Bearer ${CHEAP_API_KEY}`, 'Content-Type': 'application/json' } 
+    });
+    
+    const summary = resp.data.choices[0].message.content;
+    const reconstructed: any[] = [];
+    if (systemPrompt) reconstructed.push(systemPrompt);
+    reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
+    reconstructed.push(...recentHistory);
+    reconstructed.push(lastUserMsg);
+    
+    currentMessages = reconstructed;
+    console.log(`[CURATOR] Cheap History Summarization Complete. New Total: ${estimateTokens(currentMessages)}`);
+  } catch (e: any) {
+    console.error('[CURATOR] Cheap Summarization Failed. Falling back to Truncation.', e.response?.data || e.message);
+    return baselineMessages; 
+  }
+
+  // 4. Stage 2: Summarize System Prompt using CHEAP model
+  if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
+    console.log('[CURATOR] Still over 8k. Using Cheap AI to shrink System Prompt...');
     try {
-      const resp = await axios.post(`${endpoint}/chat/completions`, {
-        model: model,
+      const resp = await axios.post(`${CHEAP_ENDPOINT}/chat/completions`, {
+        model: CHEAP_MODEL,
         messages: [
-          { role: 'system', content: 'Summarize the following System Instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
+          { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules.' },
           { role: 'user', content: systemPrompt.content }
         ],
-        temperature: 0.2,
-        max_tokens: 1500,
+        temperature: 0.1,
+        max_tokens: 800,
       }, { 
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' } 
+        headers: { 'Authorization': `Bearer ${CHEAP_API_KEY}`, 'Content-Type': 'application/json' } 
       });
       
       const systemSummary = resp.data.choices[0].message.content;
@@ -109,9 +123,9 @@ async function curateContext(messages: any[], endpoint: string, key: string, mod
       if (sIndex !== -1) {
         currentMessages[sIndex] = { role: 'system', content: systemSummary };
       }
-      console.log(`[CURATOR] Stage 2 (System) Complete. Final Total: ${estimateTokens(currentMessages)}`);
+      console.log(`[CURATOR] Cheap System Summarization Complete. Final Total: ${estimateTokens(currentMessages)}`);
     } catch (e: any) {
-      console.error('[CURATOR] System Summarization Critical Failure:', e.response?.data || e.message);
+      console.error('[CURATOR] Cheap System Summarization Failed.', e.response?.data || e.message);
     }
   }
 
@@ -160,14 +174,9 @@ export async function POST(req: Request) {
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
   // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k)
-  if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
-    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator before limit check...`);
-    body.messages = await curateContext(
-      body.messages, 
-      s[0].upstreamEndpoint as string, 
-      s[0].upstreamKey as string, 
-      body.model || 'gpt-4o'
-    );
+  if (estimatedInputTokens > 8000) {
+    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running cheap curator...`);
+    body.messages = await curateContext(body.messages);
     // RE-ESTIMATE after curation
     estimatedInputTokens = estimateTokens(body.messages || []);
     console.log(`[CURATOR] Post-curation tokens: ${estimatedInputTokens}`);
