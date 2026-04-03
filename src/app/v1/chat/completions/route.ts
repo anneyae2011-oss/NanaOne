@@ -98,9 +98,14 @@ export async function POST(req: Request) {
 
   // CONTEXT CURATOR LOGIC
   const estimatedInputTokens = estimateTokens(body.messages || []);
-  if (estimatedInputTokens > 6000) {
+  if (estimatedInputTokens > 6000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator...`);
-    body.messages = await curateContext(body.messages, s[0].upstreamEndpoint, s[0].upstreamKey, body.model);
+    body.messages = await curateContext(
+      body.messages, 
+      s[0].upstreamEndpoint as string, 
+      s[0].upstreamKey as string, 
+      body.model || 'gpt-4o'
+    );
   }
 
   try {
