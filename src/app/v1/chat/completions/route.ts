@@ -128,18 +128,17 @@ async function curateContext(messages: any[]): Promise<any[]> {
   baselineMessages.push(...recentHistory);
   baselineMessages.push(lastUserMsg);
   
-  if (oldHistory.length === 0) return messages;
+  let currentMessages = [...messages];
 
-  // 3. Stage 1: History Summarization (ALWAYS attempt if history exists and over 8k)
-  let currentMessages = [...baselineMessages];
-  console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
-  try {
-    const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
-
-    const summary = await callCheapAI([
-      { 
-        role: 'system', 
-        content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 tokens maximum.
+  // 3. Stage 1: History Summarization (Attempt if history exists)
+  if (oldHistory.length > 0) {
+    console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
+    try {
+      const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
+      const summary = await callCheapAI([
+        { 
+          role: 'system', 
+          content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 tokens maximum.
 
 Rules:
 - Keep only the most important facts, questions, and answers
@@ -148,20 +147,25 @@ Rules:
 - If the original text is already under 2500 tokens, return it almost unchanged
 - Be aggressive but don't invent information
 - Output ONLY the summary, no extra text` 
-      },
-      { role: 'user', content: historyText }
-    ], 2500, failedProviders);
-    
-    const reconstructed: any[] = [];
-    if (systemPrompt) reconstructed.push(systemPrompt);
-    reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
-    reconstructed.push(...recentHistory);
-    reconstructed.push(lastUserMsg);
-    
-    currentMessages = reconstructed;
-    console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
-  } catch (e) {
-    console.error('[CURATOR] History curation failed entirely. Truncating.');
+        },
+        { role: 'user', content: historyText }
+      ], 2500, failedProviders);
+      
+      const reconstructed: any[] = [];
+      if (systemPrompt) reconstructed.push(systemPrompt);
+      reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
+      reconstructed.push(...recentHistory);
+      reconstructed.push(lastUserMsg);
+      
+      currentMessages = reconstructed;
+      console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
+    } catch (e) {
+      console.error('[CURATOR] History curation failed entirely. Truncating.');
+      currentMessages = [...baselineMessages];
+    }
+  } else {
+    console.log('[CURATOR] No old history to summarize. Skipping Stage 1.');
+    currentMessages = [...baselineMessages];
   }
 
   // 4. Stage 2: System Prompt Fallback
