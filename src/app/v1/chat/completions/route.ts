@@ -102,9 +102,20 @@ async function curateContext(messages: any[]): Promise<any[]> {
   let currentMessages = [...baselineMessages];
   try {
     const summary = await callCheapAI([
-      { role: 'system', content: 'Summarize the following historical conversation into a SINGLE SHORT PARAGRAPH. Core facts ONLY. Be extremely brief.' },
+      { 
+        role: 'system', 
+        content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 words maximum.
+
+Rules:
+- Keep only the most important facts, questions, and answers
+- Remove repetition, greetings, filler words
+- Preserve names, dates, key decisions, unresolved questions
+- If the original text is already under 2500 words, return it almost unchanged
+- Be aggressive but don't invent information
+- Output ONLY the summary, no extra text` 
+      },
       { role: 'user', content: JSON.stringify(oldHistory) }
-    ], 500);
+    ], 3500);
     
     const reconstructed: any[] = [];
     if (systemPrompt) reconstructed.push(systemPrompt);
