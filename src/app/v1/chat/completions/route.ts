@@ -58,7 +58,7 @@ async function callCheapAI(messages: any[], maxTokens: number): Promise<string> 
     console.log(`[CURATOR] Trying provider: ${provider.name}...`);
     for (const model of provider.models) {
       try {
-        console.log(`[CURATOR] Attempting with ${model} (${provider.name})...`);
+        console.log(`[CURATOR] Attempting with ${model} (${provider.name}). Key prefix: ${provider.key?.substring(0, 5)}...`);
         const resp = await axios.post(`${provider.endpoint}/chat/completions`, {
           model: model,
           messages: messages,
@@ -71,11 +71,11 @@ async function callCheapAI(messages: any[], maxTokens: number): Promise<string> 
         console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
         return resp.data.choices[0].message.content;
       } catch (e: any) {
-        console.error(`[CURATOR] ${provider.name}/${model} failed:`, e.message);
+        console.error(`[CURATOR] ${provider.name}/${model} failed (Status: ${e.response?.status}):`, e.message);
       }
     }
   }
-  throw new Error("All cheap providers exhausted");
+  throw new Error("All cheap providers exhausted or keys missing");
 }
 
 async function curateContext(messages: any[]): Promise<any[]> {
@@ -107,25 +107,25 @@ async function curateContext(messages: any[]): Promise<any[]> {
   
   if (oldHistory.length === 0) return messages;
 
-  // 3. Stage 1: History Summarization (ALWAYS attempt if history exists)
+  // 3. Stage 1: History Summarization (ALWAYS attempt if history exists and over 8k)
   console.log(`[CURATOR] Mandatory Summarization for ${oldHistory.length} msgs...`);
   let currentMessages = [...baselineMessages];
   try {
     const summary = await callCheapAI([
       { 
         role: 'system', 
-        content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 words maximum.
+        content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 tokens maximum.
 
 Rules:
 - Keep only the most important facts, questions, and answers
 - Remove repetition, greetings, filler words
 - Preserve names, dates, key decisions, unresolved questions
-- If the original text is already under 2500 words, return it almost unchanged
+- If the original text is already under 2500 tokens, return it almost unchanged
 - Be aggressive but don't invent information
 - Output ONLY the summary, no extra text` 
       },
       { role: 'user', content: JSON.stringify(oldHistory) }
-    ], 4000);
+    ], 2500);
     
     const reconstructed: any[] = [];
     if (systemPrompt) reconstructed.push(systemPrompt);
