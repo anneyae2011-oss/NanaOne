@@ -98,13 +98,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Gateway settings not initialized' }, { status: 500, headers: CORS_HEADERS });
   }
 
-  // GLOBAL LIMITS VALIDATION (413 Check)
-  const estimatedInputTokens = estimateTokens(body.messages || []);
+  // 1. Initial Token Estimation
+  let estimatedInputTokens = estimateTokens(body.messages || []);
+
+  // 2. CONTEXT CURATOR LOGIC (Run FIRST to potentially reduce context)
+  if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
+    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator...`);
+    body.messages = await curateContext(
+      body.messages, 
+      s[0].upstreamEndpoint as string, 
+      s[0].upstreamKey as string, 
+      body.model || 'gpt-4o'
+    );
+    // RE-ESTIMATE after curation
+    estimatedInputTokens = estimateTokens(body.messages || []);
+    console.log(`[CURATOR] Post-curation tokens: ${estimatedInputTokens}`);
+  }
+
+  // 3. GLOBAL LIMITS VALIDATION (413 Check - Run AFTER potential curation)
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
   if (estimatedInputTokens > contextLimit) {
-    console.error(`[LIMIT EXCEEDED] Context Size: ${estimatedInputTokens} > ${contextLimit}`);
+    console.error(`[LIMIT EXCEEDED] Final Context Size: ${estimatedInputTokens} > ${contextLimit}`);
     return NextResponse.json({ 
       error: {
         message: `Context size too large (${estimatedInputTokens} tokens). Global limit is ${contextLimit}.`,
@@ -123,17 +139,6 @@ export async function POST(req: Request) {
         code: 413
       }
     }, { status: 413, headers: CORS_HEADERS });
-  }
-
-  // CONTEXT CURATOR LOGIC (Run only if within context limit but above curator trigger)
-  if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
-    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator...`);
-    body.messages = await curateContext(
-      body.messages, 
-      s[0].upstreamEndpoint as string, 
-      s[0].upstreamKey as string, 
-      body.model || 'gpt-4o'
-    );
   }
 
   try {
