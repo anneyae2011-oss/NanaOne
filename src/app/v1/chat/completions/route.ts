@@ -32,34 +32,67 @@ function estimateTokens(messages: any[]): number {
 async function curateContext(messages: any[], endpoint: string, key: string, model: string): Promise<any[]> {
   if (messages.length <= 2) return messages;
 
-  // Keep the last 2 messages raw
-  const latestMessages = messages.slice(-2);
-  const history = messages.slice(0, -2);
+  // 1. Identify Components
+  const systemPrompt = messages.find(m => m.role === 'system') || { role: 'system', content: '' };
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user') || messages[messages.length - 1];
+  
+  // Find index of last user message to isolate history before it
+  const lastUserIndex = messages.lastIndexOf(lastUserMsg);
+  const midHistory = messages.slice(0, lastUserIndex).filter(m => m !== systemPrompt);
+  
+  // 2. Identify Last 3 Exchanges (6 messages)
+  const recentHistory = midHistory.slice(-6);
+  const oldHistory = midHistory.slice(0, -6);
 
-  console.log(`[CURATOR] Triggered for ${messages.length} messages. Summarizing deep history...`);
+  console.log(`[CURATOR] Identification: System Prompt + ${oldHistory.length} old msgs + ${recentHistory.length} recent msgs + Current User Msg.`);
 
-  try {
-    const response = await axios.post(`${endpoint}/chat/completions`, {
-      model: model,
-      messages: [
-        { role: 'system', content: 'You are a NanaOne Context Curator. Analyze the following conversation history. Create a high-fidelity, detailed summary of approximately 2,500 tokens that merges all earlier context, facts, and states. This will be the context for the immediate turn. Focus on deep history while leaving recent events for the raw tail.' },
-        { role: 'user', content: JSON.stringify(history) }
-      ],
-      temperature: 0.2,
-      max_tokens: 3000, // Capacity for the 2500 token target
-    }, {
-      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }
-    });
+  let finalMessages = [...messages];
 
-    const summary = response.data.choices[0].message.content;
-    return [
-      { role: 'system', content: `[CURATED CONTEXT]: ${summary}` },
-      ...latestMessages
-    ];
-  } catch (error) {
-    console.error('Curator Error:', error);
-    return messages;
+  // 3. Summarize Old History if it exists
+  if (oldHistory.length > 0) {
+    try {
+      const resp = await axios.post(`${endpoint}/chat/completions`, {
+        model: model,
+        messages: [
+          { role: 'system', content: 'You are a NanaOne Context Curator. Summarize the following middle conversation history into a single, highly dense paragraph. Preserve all key facts, names, and states.' },
+          { role: 'user', content: JSON.stringify(oldHistory) }
+        ],
+        temperature: 0.2,
+      }, { headers: { 'Authorization': `Bearer ${key}` } });
+      
+      const summary = resp.data.choices[0].message.content;
+      finalMessages = [
+        systemPrompt,
+        { role: 'user', content: `[SUMMARY OF OLD HISTORY]: ${summary}` },
+        ...recentHistory,
+        lastUserMsg
+      ];
+    } catch (e) {
+      console.error('[CURATOR] History Summarization Failed:', e);
+    }
   }
+
+  // 4. Fallback: Summarize System Prompt if still > 8000
+  if (estimateTokens(finalMessages) > 8000) {
+    console.log('[CURATOR] Still > 8k. Summarizing System Prompt...');
+    try {
+      const resp = await axios.post(`${endpoint}/chat/completions`, {
+        model: model,
+        messages: [
+          { role: 'system', content: 'Summarize the following System Instructions into a more concise version while keeping ALL core rules and character traits intact.' },
+          { role: 'user', content: systemPrompt.content }
+        ],
+        temperature: 0.2,
+      }, { headers: { 'Authorization': `Bearer ${key}` } });
+      
+      const systemSummary = resp.data.choices[0].message.content;
+      finalMessages[0] = { role: 'system', content: systemSummary };
+    } catch (e) {
+      console.error('[CURATOR] System Summarization Failed:', e);
+    }
+  }
+
+  return finalMessages;
 }
 
 export async function POST(req: Request) {
