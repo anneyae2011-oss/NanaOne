@@ -29,36 +29,53 @@ function estimateTokens(messages: any[]): number {
   return Math.ceil(totalChars / 4);
 }
 
-const CHEAP_API_KEY = "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";
-const CHEAP_ENDPOINT = "https://integrate.api.nvidia.com/v1";
-const CHEAP_MODELS = [
-  "deepseek-ai/deepseek-v3.1",
-  "moonshotai/kimi-k2.5",
-  "openai/gpt-oss-120b",
-  "moonshotai/kimi-k2-instruct-0905",
-  "moonshotai/kimi-k2-instruct"
+const CHEAP_PROVIDERS = [
+  {
+    name: "NVIDIA",
+    endpoint: "https://integrate.api.nvidia.com/v1",
+    key: process.env.NVIDIA_API_KEY,
+    models: [
+      "deepseek-ai/deepseek-v3.1",
+      "moonshotai/kimi-k2.5",
+      "openai/gpt-oss-120b",
+      "moonshotai/kimi-k2-instruct-0905",
+      "moonshotai/kimi-k2-instruct"
+    ]
+  },
+  {
+    name: "GROQ",
+    endpoint: "https://api.groq.com/openai/v1",
+    key: process.env.GROQ_API_KEY,
+    models: [
+      "openai/gpt-oss-20b",
+      "llama-3.1-8b-instant"
+    ]
+  }
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number): Promise<string> {
-  for (const model of CHEAP_MODELS) {
-    try {
-      console.log(`[CURATOR] Attempting with ${model}...`);
-      const resp = await axios.post(`${CHEAP_ENDPOINT}/chat/completions`, {
-        model: model,
-        messages: messages,
-        temperature: 0.1,
-        max_tokens: maxTokens,
-      }, { 
-        headers: { 'Authorization': `Bearer ${CHEAP_API_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 15000 // 15s timeout before trying next model
-      });
-      console.log(`[CURATOR] Success with model: ${model}`);
-      return resp.data.choices[0].message.content;
-    } catch (e: any) {
-      console.error(`[CURATOR] Model ${model} failed:`, e.message);
+  for (const provider of CHEAP_PROVIDERS) {
+    console.log(`[CURATOR] Trying provider: ${provider.name}...`);
+    for (const model of provider.models) {
+      try {
+        console.log(`[CURATOR] Attempting with ${model} (${provider.name})...`);
+        const resp = await axios.post(`${provider.endpoint}/chat/completions`, {
+          model: model,
+          messages: messages,
+          temperature: 0.1,
+          max_tokens: maxTokens,
+        }, { 
+          headers: { 'Authorization': `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
+          timeout: 15000 
+        });
+        console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
+        return resp.data.choices[0].message.content;
+      } catch (e: any) {
+        console.error(`[CURATOR] ${provider.name}/${model} failed:`, e.message);
+      }
     }
   }
-  throw new Error("All cheap models exhausted");
+  throw new Error("All cheap providers exhausted");
 }
 
 async function curateContext(messages: any[]): Promise<any[]> {
