@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     if (usage) {
       const promptTokens = usage.prompt_tokens;
       const completionTokens = usage.completion_tokens;
-      const cost = (promptTokens * 8 / 1000000) + (completionTokens * 25 / 1000000);
+      const cost = (promptTokens * 15 / 1000000) + (completionTokens * 75 / 1000000);
       
       let newDaily = currentDailyBalance;
       let newOneTime = currentOneTimeBalance;

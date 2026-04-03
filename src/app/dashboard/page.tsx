@@ -219,11 +219,11 @@ export default function Dashboard() {
               <tbody>
                 <tr>
                   <td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>Input</td>
-                  <td style={{ textAlign: 'right' }}>$8 / 1M tokens</td>
+                  <td style={{ textAlign: 'right' }}>$15 / 1M tokens</td>
                 </tr>
                 <tr>
                   <td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>Output</td>
-                  <td style={{ textAlign: 'right' }}>$25 / 1M tokens</td>
+                  <td style={{ textAlign: 'right' }}>$75 / 1M tokens</td>
                 </tr>
               </tbody>
             </table>
