@@ -54,11 +54,17 @@ const CHEAP_PROVIDERS = [
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number): Promise<string> {
+  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 00:24:00 2026)`);
   for (const provider of CHEAP_PROVIDERS) {
+    if (!provider.key) {
+      console.log(`[CURATOR] Skipping ${provider.name} (Key is MISSING).`);
+      continue;
+    }
     console.log(`[CURATOR] Trying provider: ${provider.name}...`);
     for (const model of provider.models) {
       try {
-        console.log(`[CURATOR] Attempting with ${model} (${provider.name}). Key prefix: ${provider.key?.substring(0, 5)}...`);
+        const keyForLog = `${provider.key.substring(0, 5)}...${provider.key.substring(provider.key.length - 3)}`;
+        console.log(`[CURATOR] Attempting with ${model} (${provider.name}). Key format: ${keyForLog}`);
         const resp = await axios.post(`${provider.endpoint}/chat/completions`, {
           model: model,
           messages: messages,
