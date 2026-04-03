@@ -108,15 +108,18 @@ async function curateContext(messages: any[]): Promise<any[]> {
 
   const failedProviders = new Set<string>();
 
-  // ... (Identification remains same)
+  // 1. Identification
   const systemMsgIndex = messages.findIndex(m => m.role === 'system');
   const systemPrompt = systemMsgIndex !== -1 ? messages[systemMsgIndex] : null;
+  
   const lastUserMsgIndex = [...messages].reverse().findIndex(m => m.role === 'user');
   if (lastUserMsgIndex === -1) return messages; 
   const lastUserIndex = (messages.length - 1) - lastUserMsgIndex;
   const lastUserMsg = messages[lastUserIndex];
+  
   const startIndex = systemMsgIndex !== -1 ? systemMsgIndex + 1 : 0;
   const midHistory = messages.slice(startIndex, lastUserIndex);
+  
   const recentHistory = midHistory.slice(-6);
   const oldHistory = midHistory.slice(0, -6);
 
@@ -128,8 +131,8 @@ async function curateContext(messages: any[]): Promise<any[]> {
   if (oldHistory.length === 0) return messages;
 
   // 3. Stage 1: History Summarization (ALWAYS attempt if history exists and over 8k)
-  console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
   let currentMessages = [...baselineMessages];
+  console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
   try {
     const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
 
@@ -159,10 +162,9 @@ Rules:
     console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
   } catch (e) {
     console.error('[CURATOR] History curation failed entirely. Truncating.');
-    // Even if it failed, currentMessages is still baselineMessages (truncated)
   }
 
-  // 4. Stage 2: System Prompt Fallback (with Fallbacks)
+  // 4. Stage 2: System Prompt Fallback
   if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
     console.log('[CURATOR] Still bulky. Summarizing System Prompt...');
     try {
@@ -170,28 +172,6 @@ Rules:
         { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
         { role: 'user', content: systemPrompt.content }
       ], 800, failedProviders);
-    
-    const reconstructed: any[] = [];
-    if (systemPrompt) reconstructed.push(systemPrompt);
-    reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
-    reconstructed.push(...recentHistory);
-    reconstructed.push(lastUserMsg);
-    
-    currentMessages = reconstructed;
-    console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
-  } catch (e) {
-    console.error('[CURATOR] History curation failed entirely. Truncating.');
-    return baselineMessages; 
-  }
-
-  // 4. Stage 2: System Prompt Fallback (with Fallbacks)
-  if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
-    console.log('[CURATOR] Still bulky. Summarizing System Prompt...');
-    try {
-      const systemSummary = await callCheapAI([
-        { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
-        { role: 'user', content: systemPrompt.content }
-      ], 800);
       
       const sIndex = currentMessages.findIndex(m => m.role === 'system');
       if (sIndex !== -1) {
