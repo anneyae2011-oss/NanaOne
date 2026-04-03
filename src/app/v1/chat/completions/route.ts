@@ -131,12 +131,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Gateway settings not initialized' }, { status: 500, headers: CORS_HEADERS });
   }
 
-  // 1. Initial Token Estimation
+  // 1. Initial Token Estimation & Limits
   let estimatedInputTokens = estimateTokens(body.messages || []);
+  const contextLimit = s[0].contextLimit || 16000;
+  const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  // 2. CONTEXT CURATOR LOGIC (Run FIRST to potentially reduce context)
-  if (estimatedInputTokens > 8000 && s[0].upstreamEndpoint && s[0].upstreamKey) {
-    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator...`);
+  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k OR over hard limit)
+  if ((estimatedInputTokens > 8000 || estimatedInputTokens > contextLimit) && s[0].upstreamEndpoint && s[0].upstreamKey) {
+    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running curator before limit check...`);
     body.messages = await curateContext(
       body.messages, 
       s[0].upstreamEndpoint as string, 
