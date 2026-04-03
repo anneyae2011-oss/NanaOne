@@ -11,11 +11,12 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { endpoint, key, maxOutputTokens } = body;
+  const { endpoint, key, contextLimit, maxOutputTokens } = body;
 
   await db.update(settings).set({
     upstreamEndpoint: endpoint,
     upstreamKey: key,
+    contextLimit: Number(contextLimit) || 16000,
     maxOutputTokens: Number(maxOutputTokens) || 4000,
   }).where(eq(settings.id, 1));
 

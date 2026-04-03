@@ -173,7 +173,19 @@ export async function POST(req: Request) {
     console.log(`[CURATOR] Post-curation tokens: ${estimatedInputTokens}`);
   }
 
-  // 3. GLOBAL OUTPUT LIMIT VALIDATION (Keep max output tokens check)
+  // 3. GLOBAL LIMITS VALIDATION (413 Check - Run AFTER potential curation)
+  if (estimatedInputTokens > contextLimit) {
+    console.error(`[LIMIT EXCEEDED] Final Context Size: ${estimatedInputTokens} > ${contextLimit}`);
+    return NextResponse.json({ 
+      error: {
+        message: `Context size too large (${estimatedInputTokens} tokens). Global limit is ${contextLimit}.`,
+        type: 'context_too_large',
+        code: 413
+      }
+    }, { status: 413, headers: CORS_HEADERS });
+  }
+
+  // 4. GLOBAL OUTPUT LIMIT VALIDATION
   if (body.max_tokens && body.max_tokens > maxOutputLimit) {
     console.error(`[LIMIT EXCEEDED] Output Tokens: ${body.max_tokens} > ${maxOutputLimit}`);
     return NextResponse.json({ 
