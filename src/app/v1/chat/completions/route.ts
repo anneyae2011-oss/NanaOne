@@ -146,6 +146,7 @@ Rules:
 - Remove repetition, greetings, filler words
 - Preserve names, dates, key decisions, unresolved questions
 - If the original text is already under 2500 tokens, return it almost unchanged
+- NEVER summarize "system" role content if it inadvertently appears
 - Be aggressive but don't invent information
 - Output ONLY the summary, no extra text` 
         },
@@ -173,7 +174,7 @@ Rules:
 }
 
 export async function POST(req: Request) {
-  const timestamp = "Sat Apr 4 11:40:00 2026";
+  const timestamp = "Sat Apr 4 11:45:00 2026";
   console.log(`[PROXY] Request received | Build: ${timestamp}`);
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
