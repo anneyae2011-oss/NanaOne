@@ -126,13 +126,13 @@ async function curateContext(messages: any[]): Promise<any[]> {
   const lastUserMsg = nonSystemMessages[nonSystemMessages.length - 1];
   const conversationHistory = nonSystemMessages.slice(0, -1);
 
-  // Identify Recent History: Last 3 exchanges (6 messages) before the current turn
+  // Identify Recent History: Last 2 messages (to keep 3 total raw including current turn)
   // These must remain untouched to preserve immediate flow and context
-  const recentHistory = conversationHistory.slice(-6);
-  const oldHistory = conversationHistory.slice(0, -6);
+  const recentHistory = conversationHistory.slice(-2);
+  const oldHistory = conversationHistory.slice(0, -2);
 
   if (oldHistory.length === 0) {
-    console.log('[CURATOR] All non-system history fits within the "Recent" window. Skipping Stage 1.');
+    console.log('[CURATOR] All non-system history fits within the "Recent" window. Skipping Phase 1.');
     return [...systemMessages, ...recentHistory, lastUserMsg];
   }
 
