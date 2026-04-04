@@ -9,7 +9,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'X-NanaOne-Build': 'Sat-Apr-4-11:15-2026',
+  'X-NanaOne-Build': 'Sat-Apr-4-18:45-2026',
 };
 
 export async function OPTIONS() {
@@ -64,7 +64,7 @@ const CHEAP_PROVIDERS = [
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>): Promise<string> {
-  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 00:45:00 2026)`);
+  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 18:45:00 2026)`);
   for (const provider of CHEAP_PROVIDERS) {
     if (blacklist.has(provider.name)) {
       console.log(`[CURATOR] Bypassing ${provider.name} (Previously failed in this request).`);
@@ -162,7 +162,8 @@ Rules:
       lastUserMsg
     ];
     
-    console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(reconstructed)} (System Prompt size preserved: ${estimateTokens(systemMessages)} tokens)`);
+    console.log(`[CURATOR] History shrunk. [System: ${estimateTokens(systemMessages)} | Summary: ${estimateTokens([{role:'user',content:summary}])} | Recent: ${estimateTokens(recentHistory)} | Current: ${estimateTokens([lastUserMsg])}]`);
+    console.log(`[CURATOR] Total reconstructed context: ${estimateTokens(reconstructed)} tokens.`);
     return reconstructed;
   } catch (e) {
     console.error('[CURATOR] History curation failed entirely. Truncating.');
@@ -171,7 +172,7 @@ Rules:
 }
 
 export async function POST(req: Request) {
-  const timestamp = "Sat Apr 4 11:45:00 2026";
+  const timestamp = "Sat Apr 4 18:45:00 2026";
   console.log(`[PROXY] Request received | Build: ${timestamp}`);
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -248,6 +249,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    console.log(`[CURATOR] Handoff: Curation complete. Sending final payload to upstream provider...`);
     const upstreamResponse = await axios.post(`${s[0].upstreamEndpoint}/chat/completions`, body, {
       headers: {
         'Authorization': `Bearer ${s[0].upstreamKey}`,
