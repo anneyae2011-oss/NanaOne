@@ -9,7 +9,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'X-NanaOne-Build': 'Sat-Apr-4-18:45-2026',
+  'X-NanaOne-Build': 'Sat-Apr-4-18:40-2026',
 };
 
 export async function OPTIONS() {
@@ -27,7 +27,7 @@ function estimateTokens(messages: any[]): number {
       }
     }
   }
-  return Math.ceil(totalChars / 4);
+  return Math.ceil(totalChars / 3.5);
 }
 
 // Obfuscated keys to bypass GitHub scanner while providing reliable fallback
@@ -64,7 +64,7 @@ const CHEAP_PROVIDERS = [
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>): Promise<string> {
-  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 18:45:00 2026)`);
+  console.log(`[CURATOR INTEGRITY] Check (${new Date().toLocaleTimeString()})`);
   for (const provider of CHEAP_PROVIDERS) {
     if (blacklist.has(provider.name)) {
       console.log(`[CURATOR] Bypassing ${provider.name} (Previously failed in this request).`);
@@ -134,7 +134,7 @@ async function curateContext(messages: any[]): Promise<any[]> {
   }
 
   // 3. Stage 1: History Summarization (ONLY for Old History)
-  console.log(`[CURATOR] Summarizing ${oldHistory.length} messages (Old History). ${systemMessages.length} system messages isolated.`);
+  console.log(`[CURATOR] PHASE START: Summarizing ${oldHistory.length} messages (Old History).`);
   try {
     const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
     const summary = await callCheapAI([
@@ -163,7 +163,7 @@ Rules:
     ];
     
     console.log(`[CURATOR] History shrunk. [System: ${estimateTokens(systemMessages)} | Summary: ${estimateTokens([{role:'user',content:summary}])} | Recent: ${estimateTokens(recentHistory)} | Current: ${estimateTokens([lastUserMsg])}]`);
-    console.log(`[CURATOR] Total reconstructed context: ${estimateTokens(reconstructed)} tokens.`);
+    console.log(`[CURATOR] PHASE END: History shrunk. Reconstructed payload ready.`);
     return reconstructed;
   } catch (e) {
     console.error('[CURATOR] History curation failed entirely. Truncating.');
@@ -172,8 +172,8 @@ Rules:
 }
 
 export async function POST(req: Request) {
-  const timestamp = "Sat Apr 4 18:45:00 2026";
-  console.log(`[PROXY] Request received | Build: ${timestamp}`);
+  const nowStr = new Date().toLocaleTimeString();
+  console.log(`[PROXY] Request received | Time: ${nowStr}`);
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401, headers: CORS_HEADERS });
@@ -215,8 +215,8 @@ export async function POST(req: Request) {
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k)
-  if (estimatedInputTokens > 8000) {
+  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 4k tokens to be safe)
+  if (estimatedInputTokens > 4000) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running cheap curator...`);
     body.messages = await curateContext(body.messages);
     // RE-ESTIMATE after curation
