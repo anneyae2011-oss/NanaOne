@@ -191,6 +191,8 @@ Rules:
 }
 
 export async function POST(req: Request) {
+  const timestamp = "Sat Apr 4 11:10:00 2026";
+  console.log(`[PROXY] Request received | Build: ${timestamp}`);
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401, headers: CORS_HEADERS });
@@ -228,6 +230,7 @@ export async function POST(req: Request) {
 
   // 1. Initial Token Estimation & Limits
   let estimatedInputTokens = estimateTokens(body.messages || []);
+  console.log(`[PROXY] Initial tokens estimated: ${estimatedInputTokens}`);
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
