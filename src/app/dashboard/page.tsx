@@ -1,66 +1,37 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Key, Copy, Check, Info, Zap, Layout, ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
+import { Key, Copy, Check, Info, Zap, Layout, ArrowLeft, RefreshCw, Loader2, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { signOut, useSession } from 'next-auth/react';
 
 export default function Dashboard() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [user, setUser] = useState<any>(null);
   const [models, setModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inputKey, setInputKey] = useState('');
 
   useEffect(() => {
-    const init = async () => {
-      const savedKey = localStorage.getItem('nana_api_key');
-      if (savedKey) {
-        await fetchUser(savedKey);
-      } else {
-        await provisionAnonymous();
-      }
+    if (status === 'authenticated') {
+      fetchUser();
       fetchModels();
-    };
-    init();
-  }, []);
-
-  const provisionAnonymous = async () => {
-    setGenerating(true);
-    try {
-      const res = await fetch('/api/auth/anonymous', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        localStorage.setItem('nana_api_key', data.apiKey);
-        localStorage.setItem('nana_username', data.username);
-        setUser({
-          apiKey: data.apiKey,
-          username: data.username,
-          balance: 20.0,
-          oneTimeBalance: 0.0
-        });
-      }
-    } catch (e) {
-      console.error('Provisioning failed');
-    } finally {
-      setGenerating(false);
-      setLoading(false);
+    } else if (status === 'unauthenticated') {
+      router.push('/login');
     }
-  };
+  }, [status]);
 
-  const fetchUser = async (key: string) => {
+  const fetchUser = async () => {
     try {
-      const res = await fetch(`/api/user?key=${key}`);
+      const res = await fetch('/api/user');
       if (res.ok) {
         const data = await res.json();
         setUser(data);
-        localStorage.setItem('nana_api_key', key);
-      } else {
-        await provisionAnonymous();
       }
     } catch (e) {
-      await provisionAnonymous();
+      console.error('User fetch failed');
     } finally {
       setLoading(false);
     }
@@ -106,7 +77,27 @@ export default function Dashboard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           <div className="glass-card">
-            <h2 className="title-gradient" style={{ marginBottom: '24px' }}>API Identity</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 className="title-gradient" style={{ marginBottom: 0 }}>API Identity</h2>
+              <button 
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.05)', 
+                  border: '1px solid var(--glass-border)', 
+                  color: 'var(--text-muted)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  cursor: 'pointer',
+                  padding: '8px 16px',
+                  borderRadius: '12px',
+                  fontSize: '0.85rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <LogOut size={14} /> Sign Out
+              </button>
+            </div>
             
             {!user ? (
                <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -162,7 +153,7 @@ export default function Dashboard() {
                       const data = await res.json();
                       if (data.success) {
                         alert(`Successfully redeemed $${data.amount}!`);
-                        await fetchUser(user.apiKey);
+                        await fetchUser();
                         setInputKey('');
                       } else {
                         alert(data.error);

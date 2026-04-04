@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   description: "Next-generation AI gateway with individual API keys and daily credits.",
 };
 
+import { Providers } from "./providers";
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -23,8 +25,10 @@ export default async function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <div className="grid-bg" />
-        {children}
+        <Providers>
+          <div className="grid-bg" />
+          {children}
+        </Providers>
       </body>
     </html>
   );

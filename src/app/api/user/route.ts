@@ -23,14 +23,22 @@ export async function POST(req: Request) {
   }
 }
 
+import { auth } from '@/auth';
+
 export async function GET(req: Request) {
+  const session = await auth();
   const { searchParams } = new URL(req.url);
   const apiKey = searchParams.get('key');
   
-  if (!apiKey) return NextResponse.json({ error: 'Key required' }, { status: 400 });
+  let user;
   
-  const user = await db.select().from(users).where(eq(users.apiKey, apiKey)).limit(1);
-  if (user.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (session?.user?.email) {
+    [user] = await db.select().from(users).where(eq(users.email, session.user.email)).limit(1);
+  } else if (apiKey) {
+    [user] = await db.select().from(users).where(eq(users.apiKey, apiKey)).limit(1);
+  }
   
-  return NextResponse.json(user[0]);
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  
+  return NextResponse.json(user);
 }

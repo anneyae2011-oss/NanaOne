@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession, signIn } from 'next-auth/react';
 import { Shield, Rocket, ChevronRight } from 'lucide-react';
 
 export default function LandingPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [isAdmin, setIsAdmin] = useState(false);
   const [password, setPassword] = useState('');
 
@@ -41,9 +43,15 @@ export default function LandingPage() {
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/dashboard')}>
-              Go to Dashboard <Rocket size={18} />
-            </button>
+            {status === 'authenticated' ? (
+              <button className="btn-primary" style={{ width: '100%' }} onClick={() => router.push('/dashboard')}>
+                Go to Dashboard <Rocket size={18} />
+              </button>
+            ) : (
+              <button className="btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} onClick={() => router.push('/login')}>
+                Sign in with GitHub <ChevronRight size={18} />
+              </button>
+            )}
           </div>
         </div>
 

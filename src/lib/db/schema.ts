@@ -1,16 +1,65 @@
 import { pgTable, text, real, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
-  id: text('id').primaryKey(),
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name'),
+  email: text('email').unique(),
+  emailVerified: timestamp('email_verified', { mode: 'date' }),
+  image: text('image'),
   username: text('username').unique(),
   phone: text('phone').unique(),
-  name: text('name'),
   apiKey: text('api_key').unique(),
   balance: real('balance').default(20.0), // Daily balance
   oneTimeBalance: real('one_time_balance').default(0.0), // Non-resetting balance
   lastReset: timestamp('last_reset'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("providerAccountId").notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (account) => [
+    {
+      compoundKey: [account.provider, account.providerAccountId],
+    },
+  ]
+);
+
+export const sessions = pgTable("sessions", {
+  sessionToken: text("sessionToken").primaryKey(),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: timestamp("expires", { mode: "date" }).notNull(),
+});
+
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+  },
+  (vt) => [
+    {
+      compoundKey: [vt.identifier, vt.token],
+    },
+  ]
+);
 
 export const verificationCodes = pgTable('verification_codes', {
   id: text('id').primaryKey(),
