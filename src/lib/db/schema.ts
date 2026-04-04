@@ -104,3 +104,15 @@ export const usageLogs = pgTable('usage_logs', {
   cost: real('cost'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const curationLogs = pgTable('curation_logs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').references(() => users.id),
+  requestId: text('request_id'),
+  originalTokens: integer('original_tokens'),
+  curatedTokens: integer('curated_tokens'),
+  curationSteps: text('curation_steps'), // JSON string of steps
+  status: text('status'),
+  modelUsed: text('model_used'),
+  createdAt: timestamp('created_at').defaultNow(),
+});

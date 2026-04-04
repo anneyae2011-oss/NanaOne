@@ -13,11 +13,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [inputKey, setInputKey] = useState('');
+  const [logs, setLogs] = useState<any[]>([]);
+  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [polling, setPolling] = useState(true);
 
   useEffect(() => {
     if (status === 'authenticated') {
       fetchUser();
       fetchModels();
+      fetchLogs();
+      const interval = setInterval(fetchLogs, 5000);
+      return () => clearInterval(interval);
     } else if (status === 'unauthenticated') {
       router.push('/login');
     }
@@ -46,6 +52,18 @@ export default function Dashboard() {
       }
     } catch (e) {
       console.error('Models fetch failed');
+    }
+  };
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/logs');
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data);
+      }
+    } catch (e) {
+      console.error('Logs fetch failed');
     }
   };
 
@@ -192,6 +210,44 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div className="glass-card">
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}><Zap size={18} /> Curation Logs</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {logs.length > 0 ? logs.map((log: any) => (
+                <div key={log.id} style={{ padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', fontSize: '0.85rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{new Date(log.createdAt).toLocaleTimeString()}</span>
+                    <span style={{ color: 'var(--primary)', fontWeight: 600 }}>-{(((log.originalTokens - log.curatedTokens) / Math.max(1, log.originalTokens)) * 100).toFixed(0)}% Shrunk</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.8rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Tokens:</span> {log.originalTokens} → <span style={{ color: 'var(--primary)' }}>{log.curatedTokens}</span>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedLog(selectedLog?.id === log.id ? null : log)}
+                      style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem' }}
+                    >
+                      {selectedLog?.id === log.id ? 'Hide Trace' : 'View Trace'}
+                    </button>
+                  </div>
+                  {selectedLog?.id === log.id && (
+                    <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontSize: '0.75rem', border: '1px solid rgba(124, 58, 237, 0.2)' }}>
+                      <p style={{ marginBottom: '8px', color: 'var(--primary)', fontWeight: 600 }}>Curation Trace:</p>
+                      {JSON.parse(log.curationSteps).map((step: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px', color: step.error ? '#ff4d4d' : 'inherit' }}>
+                          <span style={{ opacity: 0.5 }}>{step.time.split('T')[1].split('.')[0]}</span>
+                          <span>{step.step}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )) : (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>No recent curation logs.</p>
+              )}
+            </div>
+          </div>
+
           <div className="glass-card" style={{ background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.1), transparent)' }}>
             <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}><Zap size={18} /> Quick Start</h4>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>

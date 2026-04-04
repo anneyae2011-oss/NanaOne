@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { settings, users, usageLogs } from '@/lib/db/schema';
+import { settings, users, usageLogs, curationLogs } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
@@ -63,7 +63,7 @@ const CHEAP_PROVIDERS = [
   }
 ];
 
-async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>): Promise<string> {
+async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>, steps: any[]): Promise<string> {
   console.log(`[CURATOR INTEGRITY] Check (${new Date().toLocaleTimeString()})`);
   for (const provider of CHEAP_PROVIDERS) {
     if (blacklist.has(provider.name)) {
@@ -79,6 +79,7 @@ async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<st
       try {
         const keyForLog = `${provider.key.substring(0, 5)}...${provider.key.substring(provider.key.length - 3)}`;
         console.log(`[CURATOR] Trying ${model} (${provider.name}) | Key: ${keyForLog}`);
+        steps.push({ time: new Date().toISOString(), step: `Trying ${model} on ${provider.name}` });
         const resp = await axios.post(`${provider.endpoint}/chat/completions`, {
           model: model,
           messages: messages,
@@ -89,9 +90,11 @@ async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<st
           timeout: 10000 
         });
         console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
+        steps.push({ time: new Date().toISOString(), step: `Success with ${model}` });
         return resp.data.choices[0].message.content;
       } catch (e: any) {
         console.error(`[CURATOR ERROR] ${provider.name}/${model} | Status: ${e.response?.status} | Data: ${JSON.stringify(e.response?.data || e.message)}`);
+        steps.push({ time: new Date().toISOString(), step: `Error with ${model}: ${e.message}`, error: true });
       }
     }
     // If we reach here, all models for this provider failed
@@ -101,9 +104,10 @@ async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<st
   throw new Error("All cheap providers exhausted or keys missing");
 }
 
-async function curateContext(messages: any[]): Promise<any[]> {
+async function curateContext(messages: any[], steps: any[]): Promise<any[]> {
   if (!messages || messages.length <= 2) {
     console.log(`[CURATOR] Message count too low to segment (${messages?.length || 0}). Skipping curation.`);
+    steps.push({ time: new Date().toISOString(), step: `Skipped: Message count too low (${messages?.length})` });
     return messages;
   }
 
@@ -155,7 +159,7 @@ Rules:
 - Output ONLY the summary, no extra text` 
       },
       { role: 'user', content: historyText }
-    ], 2500, failedProviders);
+    ], 2500, failedProviders, steps);
     
     // 4. Reconstruction: [Original System] + [Summary] + [Recent] + [Current]
     const reconstructed: any[] = [
@@ -176,7 +180,9 @@ Rules:
 
 export async function POST(req: Request) {
   const nowStr = new Date().toLocaleTimeString();
-  console.log(`[PROXY] Request received | Time: ${nowStr}`);
+  const requestId = uuidv4();
+  const steps: any[] = [{ time: new Date().toISOString(), step: `Request received` }];
+  console.log(`[PROXY] Request received | ID: ${requestId} | Time: ${nowStr}`);
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401, headers: CORS_HEADERS });
@@ -218,13 +224,15 @@ export async function POST(req: Request) {
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k)
   if (estimatedInputTokens > 8000) {
+    steps.push({ time: new Date().toISOString(), step: `Context high (${estimatedInputTokens}). Starting curation.` });
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running cheap curator...`);
-    body.messages = await curateContext(body.messages);
+    body.messages = await curateContext(body.messages, steps);
     // RE-ESTIMATE after curation
-    estimatedInputTokens = estimateTokens(body.messages || []);
+    const postTokens = estimateTokens(body.messages || []);
+    estimatedInputTokens = postTokens;
     console.log(`[CURATOR] Post-curation tokens: ${estimatedInputTokens}`);
+    steps.push({ time: new Date().toISOString(), step: `Curation complete. Final tokens: ${postTokens}` });
   }
 
   // 3. GLOBAL LIMITS VALIDATION (413 Check - Run AFTER potential curation)
@@ -262,6 +270,8 @@ export async function POST(req: Request) {
       console.log(`Last message role: ${last.role} | Snippet: ${typeof last.content === 'string' ? last.content.substring(0, 100) : 'Multimodal content'}`);
     }
     console.log('Sending final payload to upstream provider...');
+    steps.push({ time: new Date().toISOString(), step: `Handoff to upstream provider` });
+    const originalInputTokens = estimateTokens(body.messages || []); // Capture for log
     const upstreamResponse = await axios.post(`${s[0].upstreamEndpoint}/chat/completions`, body, {
       headers: {
         'Authorization': `Bearer ${s[0].upstreamKey}`,
@@ -301,6 +311,19 @@ export async function POST(req: Request) {
         createdAt: new Date(),
       });
     }
+
+    // Persist Curation Log
+    await db.insert(curationLogs).values({
+      id: uuidv4(),
+      userId: user[0].id,
+      requestId: requestId,
+      originalTokens: estimatedInputTokens, // This is post-curation if it ran
+      curatedTokens: estimateTokens(body.messages || []),
+      curationSteps: JSON.stringify(steps),
+      status: 'success',
+      modelUsed: body.model,
+      createdAt: new Date(),
+    });
 
     return NextResponse.json(upstreamResponse.data, { headers: CORS_HEADERS });
   } catch (error: any) {
