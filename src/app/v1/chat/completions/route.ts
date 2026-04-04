@@ -9,6 +9,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'X-NanaOne-Build': 'Sat-Apr-4-11:15-2026',
 };
 
 export async function OPTIONS() {
