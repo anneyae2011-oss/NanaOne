@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, RefreshCw, Save, ArrowLeft, Globe, Key } from 'lucide-react';
+import { Settings, RefreshCw, Save, ArrowLeft, Globe, Key, Zap } from 'lucide-react';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -11,6 +11,8 @@ export default function AdminPage() {
   const [contextLimit, setContextLimit] = useState(16000);
   const [maxOutputTokens, setMaxOutputTokens] = useState(4000);
   const [saving, setSaving] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [selectedLog, setSelectedLog] = useState<any>(null);
 
   useEffect(() => {
     const access = localStorage.getItem('admin_access');
@@ -27,7 +29,23 @@ export default function AdminPage() {
         setContextLimit(data.contextLimit || 16000);
         setMaxOutputTokens(data.maxOutputTokens || 4000);
       });
+
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
   }, [router]);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/logs');
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data);
+      }
+    } catch (e) {
+      console.error('Logs fetch failed');
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -158,8 +176,59 @@ export default function AdminPage() {
         </div>
 
         <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-           {/* We can fetch and list codes here if needed, but for now simple generation works */}
            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Latest codes are generated above. Check database for full list.</p>
+        </div>
+      </div>
+
+      <div className="glass-card" style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <Zap className="title-gradient" />
+          <h2 className="title-gradient">System Curation Logs</h2>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {logs.length > 0 ? logs.map((log: any) => (
+            <div key={log.id} style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{new Date(log.createdAt).toLocaleString()}</span>
+                  <span className="badge" style={{ fontSize: '0.65rem' }}>ID: {log.requestId?.substring(0, 8)}</span>
+                </div>
+                <span style={{ color: 'var(--primary)', fontWeight: 600 }}>
+                  {log.originalTokens > log.curatedTokens ? `-${(((log.originalTokens - log.curatedTokens) / log.originalTokens) * 100).toFixed(0)}% Shrunk` : 'No Shrink'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Tokens:</span> {log.originalTokens} → <span style={{ color: 'var(--primary)' }}>{log.curatedTokens}</span>
+                </div>
+                <button 
+                  onClick={() => setSelectedLog(selectedLog?.id === log.id ? null : log)}
+                  style={{ background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.2)', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', padding: '4px 12px', borderRadius: '6px' }}
+                >
+                  {selectedLog?.id === log.id ? 'Hide Trace' : 'View Trace'}
+                </button>
+              </div>
+              {selectedLog?.id === log.id && (
+                <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', fontSize: '0.75rem', border: '1px solid rgba(124, 58, 237, 0.2)', fontFamily: 'monospace' }}>
+                  <p style={{ marginBottom: '12px', color: 'var(--primary)', fontWeight: 600, fontSize: '0.8rem' }}>Step-by-Step Execution:</p>
+                  {JSON.parse(log.curationSteps).map((step: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', gap: '12px', marginBottom: '6px', color: step.error ? '#ff4d4d' : 'var(--text-muted)' }}>
+                      <span style={{ opacity: 0.5, whiteSpace: 'nowrap' }}>{step.time.split('T')[1].split('.')[0]}</span>
+                      <span style={{ color: step.error ? '#ff4d4d' : 'var(--text)' }}>{step.step}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
+                    Provider: {log.modelUsed}
+                  </div>
+                </div>
+              )}
+            </div>
+          )) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+              <RefreshCw className="animate-spin" style={{ margin: '0 auto 12px' }} />
+              <p>Waiting for system activity...</p>
+            </div>
+          )}
         </div>
       </div>
 
