@@ -86,7 +86,7 @@ async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<st
           max_tokens: maxTokens,
         }, { 
           headers: { 'Authorization': `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
-          timeout: 10000 
+          timeout: 45000 
         });
         console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
         return resp.data.choices[0].message.content;
@@ -164,6 +164,21 @@ Rules:
     
     console.log(`[CURATOR] History shrunk. [System: ${estimateTokens(systemMessages)} | Summary: ${estimateTokens([{role:'user',content:summary}])} | Recent: ${estimateTokens(recentHistory)} | Current: ${estimateTokens([lastUserMsg])}]`);
     console.log(`[CURATOR] PHASE END: History shrunk. Reconstructed payload ready.`);
+    
+    // 5. Adaptive Second Stage: If still over 4000, shrink the recent window from 6 to 2
+    if (estimateTokens(reconstructed) > 5000) {
+      console.log(`[CURATOR] Context still high (${estimateTokens(reconstructed)} tokens). Reducing recent window from ${recentHistory.length} to 2.`);
+      const ultraRecent = recentHistory.slice(-2);
+      const finalReconstructed = [
+        ...systemMessages,
+        { role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` },
+        ...ultraRecent,
+        lastUserMsg
+      ];
+      console.log(`[CURATOR] Adaptive Shrink complete. New Total: ${estimateTokens(finalReconstructed)}`);
+      return finalReconstructed;
+    }
+
     return reconstructed;
   } catch (e) {
     console.error('[CURATOR] History curation failed entirely. Truncating.');
@@ -215,8 +230,8 @@ export async function POST(req: Request) {
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 4k tokens to be safe)
-  if (estimatedInputTokens > 4000) {
+  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 3k tokens to be safe)
+  if (estimatedInputTokens > 3000) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running cheap curator...`);
     body.messages = await curateContext(body.messages);
     // RE-ESTIMATE after curation
