@@ -9,7 +9,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'X-NanaOne-Build': 'Sat-Apr-4-18:55-2026',
+  'X-NanaOne-Build': 'Sat-Apr-4-19:00-2026',
 };
 
 export async function OPTIONS() {
@@ -27,7 +27,7 @@ function estimateTokens(messages: any[]): number {
       }
     }
   }
-  return Math.ceil(totalChars / 4);
+  return Math.ceil(totalChars / 3.8);
 }
 
 // Obfuscated keys to bypass GitHub scanner while providing reliable fallback
@@ -64,7 +64,7 @@ const CHEAP_PROVIDERS = [
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>): Promise<string> {
-  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 18:55:00 2026)`);
+  console.log(`[CURATOR INTEGRITY] Check (${new Date().toLocaleTimeString()})`);
   for (const provider of CHEAP_PROVIDERS) {
     if (blacklist.has(provider.name)) {
       console.log(`[CURATOR] Bypassing ${provider.name} (Previously failed in this request).`);
@@ -252,7 +252,16 @@ export async function POST(req: Request) {
   }
 
   try {
-    console.log(`[CURATOR] Handoff: Curation complete. Sending final payload to upstream provider...`);
+    console.log('\n--- UPSTREAM HANDOFF INSPECTION ---');
+    console.log(`Final message count: ${body.messages?.length || 0}`);
+    console.log(`Final estimated tokens: ${estimateTokens(body.messages || [])}`);
+    if (body.messages && body.messages.length > 0) {
+      const first = body.messages[0];
+      const last = body.messages[body.messages.length - 1];
+      console.log(`First message role: ${first.role} | Snippet: ${typeof first.content === 'string' ? first.content.substring(0, 100) : 'Multimodal content'}`);
+      console.log(`Last message role: ${last.role} | Snippet: ${typeof last.content === 'string' ? last.content.substring(0, 100) : 'Multimodal content'}`);
+    }
+    console.log('Sending final payload to upstream provider...');
     const upstreamResponse = await axios.post(`${s[0].upstreamEndpoint}/chat/completions`, body, {
       headers: {
         'Authorization': `Bearer ${s[0].upstreamKey}`,
