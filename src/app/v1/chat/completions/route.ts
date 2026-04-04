@@ -9,7 +9,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'X-NanaOne-Build': 'Sat-Apr-4-18:40-2026',
+  'X-NanaOne-Build': 'Sat-Apr-4-18:55-2026',
 };
 
 export async function OPTIONS() {
@@ -27,7 +27,7 @@ function estimateTokens(messages: any[]): number {
       }
     }
   }
-  return Math.ceil(totalChars / 3.5);
+  return Math.ceil(totalChars / 4);
 }
 
 // Obfuscated keys to bypass GitHub scanner while providing reliable fallback
@@ -64,7 +64,7 @@ const CHEAP_PROVIDERS = [
 ];
 
 async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<string>): Promise<string> {
-  console.log(`[CURATOR INTEGRITY] Check (${new Date().toLocaleTimeString()})`);
+  console.log(`[CURATOR INTEGRITY] Check (Sat Apr 4 18:55:00 2026)`);
   for (const provider of CHEAP_PROVIDERS) {
     if (blacklist.has(provider.name)) {
       console.log(`[CURATOR] Bypassing ${provider.name} (Previously failed in this request).`);
@@ -86,7 +86,7 @@ async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<st
           max_tokens: maxTokens,
         }, { 
           headers: { 'Authorization': `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
-          timeout: 45000 
+          timeout: 10000 
         });
         console.log(`[CURATOR] Success with model: ${model} on ${provider.name}`);
         return resp.data.choices[0].message.content;
@@ -102,7 +102,10 @@ async function callCheapAI(messages: any[], maxTokens: number, blacklist: Set<st
 }
 
 async function curateContext(messages: any[]): Promise<any[]> {
-  if (!messages || messages.length <= 2) return messages;
+  if (!messages || messages.length <= 2) {
+    console.log(`[CURATOR] Message count too low to segment (${messages?.length || 0}). Skipping curation.`);
+    return messages;
+  }
 
   const initialTokens = estimateTokens(messages);
   console.log(`[CURATOR] Total input: ${initialTokens} tokens. Source: POST request.`);
@@ -164,21 +167,6 @@ Rules:
     
     console.log(`[CURATOR] History shrunk. [System: ${estimateTokens(systemMessages)} | Summary: ${estimateTokens([{role:'user',content:summary}])} | Recent: ${estimateTokens(recentHistory)} | Current: ${estimateTokens([lastUserMsg])}]`);
     console.log(`[CURATOR] PHASE END: History shrunk. Reconstructed payload ready.`);
-    
-    // 5. Adaptive Second Stage: If still over 4000, shrink the recent window from 6 to 2
-    if (estimateTokens(reconstructed) > 5000) {
-      console.log(`[CURATOR] Context still high (${estimateTokens(reconstructed)} tokens). Reducing recent window from ${recentHistory.length} to 2.`);
-      const ultraRecent = recentHistory.slice(-2);
-      const finalReconstructed = [
-        ...systemMessages,
-        { role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` },
-        ...ultraRecent,
-        lastUserMsg
-      ];
-      console.log(`[CURATOR] Adaptive Shrink complete. New Total: ${estimateTokens(finalReconstructed)}`);
-      return finalReconstructed;
-    }
-
     return reconstructed;
   } catch (e) {
     console.error('[CURATOR] History curation failed entirely. Truncating.');
@@ -230,8 +218,8 @@ export async function POST(req: Request) {
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 3k tokens to be safe)
-  if (estimatedInputTokens > 3000) {
+  // 2. CONTEXT CURATOR LOGIC (Run FIRST if over 8k)
+  if (estimatedInputTokens > 8000) {
     console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running cheap curator...`);
     body.messages = await curateContext(body.messages);
     // RE-ESTIMATE after curation
