@@ -193,9 +193,13 @@ Rules:
     console.log(`[CURATOR] PHASE END: History shrunk. Reconstructed payload ready.`);
     // mergeConsecutiveRoles ensures no same-role-consecutive errors
     return mergeConsecutiveRoles(reconstructed);
-  } catch (e) {
-    console.error('[CURATOR] History curation failed entirely. Truncating.');
-    return [...systemMessages, ...recentHistory, lastUserMsg];
+  } catch (e: any) {
+    if (e.message.includes("exhausted")) {
+      console.error('[CURATOR FATAL] All cheap providers exhausted. Aborting to save cost.');
+      throw new Error("CURATOR_FAILED");
+    }
+    console.error('[CURATOR ERROR] History curation failed with other error. Truncating.');
+    return mergeConsecutiveRoles([...systemMessages, ...recentHistory, lastUserMsg]);
   }
 }
 
@@ -249,7 +253,20 @@ export async function POST(req: Request) {
   if (initialTokens > 8000) {
     steps.push({ time: new Date().toISOString(), step: `Context high (${initialTokens}). Starting curation.` });
     console.log(`[CURATOR] Context high (${initialTokens} tokens). Running cheap curator...`);
-    body.messages = await curateContext(body.messages, steps);
+    try {
+      body.messages = await curateContext(body.messages, steps);
+    } catch (e: any) {
+      if (e.message === "CURATOR_FAILED") {
+        return NextResponse.json({ 
+          error: {
+            message: "Curation system exhausted. Request aborted to prevent expensive main AI costs.",
+            type: "curator_failure",
+            code: 404 
+          }
+        }, { status: 404, headers: CORS_HEADERS });
+      }
+      throw e; // Reraise other errors
+    }
     // RE-ESTIMATE after curation
     curatedTokens = estimateTokens(body.messages || []);
     console.log(`[CURATOR] Post-curation tokens: ${curatedTokens}`);
