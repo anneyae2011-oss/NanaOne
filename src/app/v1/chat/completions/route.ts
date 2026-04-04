@@ -169,30 +169,11 @@ Rules:
     currentMessages = [...baselineMessages];
   }
 
-  // 4. Stage 2: System Prompt Fallback
-  if (estimateTokens(currentMessages) > 8000 && systemPrompt) {
-    console.log('[CURATOR] Still bulky. Summarizing System Prompt...');
-    try {
-      const systemSummary = await callCheapAI([
-        { role: 'system', content: 'Summarize the following instructions into a concise version. Keep ALL persona and rules, but cut the word count by 80%.' },
-        { role: 'user', content: systemPrompt.content }
-      ], 800, failedProviders);
-      
-      const sIndex = currentMessages.findIndex(m => m.role === 'system');
-      if (sIndex !== -1) {
-        currentMessages[sIndex] = { role: 'system', content: systemSummary };
-      }
-      console.log(`[CURATOR] System prompt shrunk. Final Total: ${estimateTokens(currentMessages)}`);
-    } catch (e) {
-      console.error('[CURATOR] System curation failed entirely.');
-    }
-  }
-
   return currentMessages;
 }
 
 export async function POST(req: Request) {
-  const timestamp = "Sat Apr 4 11:10:00 2026";
+  const timestamp = "Sat Apr 4 11:40:00 2026";
   console.log(`[PROXY] Request received | Build: ${timestamp}`);
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
