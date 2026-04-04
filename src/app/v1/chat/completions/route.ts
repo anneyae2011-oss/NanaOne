@@ -9,11 +9,31 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'X-NanaOne-Build': 'Sat-Apr-4-19:00-2026',
+  'X-NanaOne-Build': 'Sat-Apr-4-19:25-2026',
 };
 
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: CORS_HEADERS });
+}
+
+// HELPER: Merge consecutive messages with the same role
+function mergeConsecutiveRoles(messages: any[]): any[] {
+  if (messages.length === 0) return [];
+  const merged: any[] = [];
+  for (const msg of messages) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === msg.role) {
+      if (typeof last.content === 'string' && typeof msg.content === 'string') {
+        last.content += "\n\n" + msg.content;
+      } else {
+        // Fallback for complex content
+        merged.push(msg);
+      }
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+  return merged;
 }
 
 function estimateTokens(messages: any[]): number {
@@ -171,7 +191,8 @@ Rules:
     
     console.log(`[CURATOR] History shrunk. [System: ${estimateTokens(systemMessages)} | Summary: ${estimateTokens([{role:'user',content:summary}])} | Recent: ${estimateTokens(recentHistory)} | Current: ${estimateTokens([lastUserMsg])}]`);
     console.log(`[CURATOR] PHASE END: History shrunk. Reconstructed payload ready.`);
-    return reconstructed;
+    // mergeConsecutiveRoles ensures no same-role-consecutive errors
+    return mergeConsecutiveRoles(reconstructed);
   } catch (e) {
     console.error('[CURATOR] History curation failed entirely. Truncating.');
     return [...systemMessages, ...recentHistory, lastUserMsg];
@@ -219,28 +240,28 @@ export async function POST(req: Request) {
   }
 
   // 1. Initial Token Estimation & Limits
-  let estimatedInputTokens = estimateTokens(body.messages || []);
-  console.log(`[PROXY] Initial tokens estimated: ${estimatedInputTokens}`);
+  const initialTokens = estimateTokens(body.messages || []);
+  let curatedTokens = initialTokens;
+  console.log(`[PROXY] Initial tokens estimated: ${initialTokens}`);
   const contextLimit = s[0].contextLimit || 16000;
   const maxOutputLimit = s[0].maxOutputTokens || 4000;
 
-  if (estimatedInputTokens > 8000) {
-    steps.push({ time: new Date().toISOString(), step: `Context high (${estimatedInputTokens}). Starting curation.` });
-    console.log(`[CURATOR] Context high (${estimatedInputTokens} tokens). Running cheap curator...`);
+  if (initialTokens > 8000) {
+    steps.push({ time: new Date().toISOString(), step: `Context high (${initialTokens}). Starting curation.` });
+    console.log(`[CURATOR] Context high (${initialTokens} tokens). Running cheap curator...`);
     body.messages = await curateContext(body.messages, steps);
     // RE-ESTIMATE after curation
-    const postTokens = estimateTokens(body.messages || []);
-    estimatedInputTokens = postTokens;
-    console.log(`[CURATOR] Post-curation tokens: ${estimatedInputTokens}`);
-    steps.push({ time: new Date().toISOString(), step: `Curation complete. Final tokens: ${postTokens}` });
+    curatedTokens = estimateTokens(body.messages || []);
+    console.log(`[CURATOR] Post-curation tokens: ${curatedTokens}`);
+    steps.push({ time: new Date().toISOString(), step: `Curation complete. Final tokens: ${curatedTokens}` });
   }
 
   // 3. GLOBAL LIMITS VALIDATION (413 Check - Run AFTER potential curation)
-  if (estimatedInputTokens > contextLimit) {
-    console.error(`[LIMIT EXCEEDED] Final Context Size: ${estimatedInputTokens} > ${contextLimit}`);
+  if (curatedTokens > contextLimit) {
+    console.error(`[LIMIT EXCEEDED] Final Context Size: ${curatedTokens} > ${contextLimit}`);
     return NextResponse.json({ 
       error: {
-        message: `Context size too large (${estimatedInputTokens} tokens). Global limit is ${contextLimit}.`,
+        message: `Context size too large (${curatedTokens} tokens). Global limit is ${contextLimit}.`,
         type: 'context_too_large',
         code: 413
       }
@@ -300,6 +321,7 @@ export async function POST(req: Request) {
         balance: newDaily, 
         oneTimeBalance: newOneTime 
       }).where(eq(users.id, user[0].id));
+
       await db.insert(usageLogs).values({
         id: uuidv4(),
         userId: user[0].id,
@@ -312,13 +334,13 @@ export async function POST(req: Request) {
       });
     }
 
-    // Persist Curation Log
+    // Persist Curation Log (SUCCESS)
     await db.insert(curationLogs).values({
       id: uuidv4(),
       userId: user[0].id,
       requestId: requestId,
-      originalTokens: estimatedInputTokens, // This is post-curation if it ran
-      curatedTokens: estimateTokens(body.messages || []),
+      originalTokens: initialTokens,
+      curatedTokens: curatedTokens,
       curationSteps: JSON.stringify(steps),
       status: 'success',
       modelUsed: body.model,
@@ -328,6 +350,20 @@ export async function POST(req: Request) {
     return NextResponse.json(upstreamResponse.data, { headers: CORS_HEADERS });
   } catch (error: any) {
     console.error('Proxy Error:', error.response?.data || error.message);
+    
+    // Persist Curation Log (FAIL)
+    await db.insert(curationLogs).values({
+      id: uuidv4(),
+      userId: user[0].id,
+      requestId: requestId,
+      originalTokens: initialTokens,
+      curatedTokens: curatedTokens,
+      curationSteps: JSON.stringify([...steps, { time: new Date().toISOString(), step: `Upstream error: ${error.message}`, error: true }]),
+      status: 'failed',
+      modelUsed: body.model,
+      createdAt: new Date(),
+    });
+
     return NextResponse.json(error.response?.data || { error: 'Failed to proxy request' }, { 
       status: error.response?.status || 500,
       headers: CORS_HEADERS
