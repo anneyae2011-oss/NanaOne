@@ -105,41 +105,42 @@ async function curateContext(messages: any[]): Promise<any[]> {
   if (!messages || messages.length <= 2) return messages;
 
   const initialTokens = estimateTokens(messages);
-  console.log(`[CURATOR] Total input: ${initialTokens} tokens.`);
+  console.log(`[CURATOR] Total input: ${initialTokens} tokens. Source: POST request.`);
 
   const failedProviders = new Set<string>();
 
-  // 1. Identification
-  const systemMsgIndex = messages.findIndex(m => m.role === 'system');
-  const systemPrompt = systemMsgIndex !== -1 ? messages[systemMsgIndex] : null;
-  
-  const lastUserMsgIndex = [...messages].reverse().findIndex(m => m.role === 'user');
-  if (lastUserMsgIndex === -1) return messages; 
-  const lastUserIndex = (messages.length - 1) - lastUserMsgIndex;
-  const lastUserMsg = messages[lastUserIndex];
-  
-  const startIndex = systemMsgIndex !== -1 ? systemMsgIndex + 1 : 0;
-  const midHistory = messages.slice(startIndex, lastUserIndex);
-  
-  const recentHistory = midHistory.slice(-6);
-  const oldHistory = midHistory.slice(0, -6);
+  // 1. Identification & Strict Isolation
+  // Extract ALL system messages to ensure they are NEVER sent to the summarizer
+  const systemMessages = messages.filter(m => m.role === 'system');
+  const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
-  const baselineMessages = [];
-  if (systemPrompt) baselineMessages.push(systemPrompt);
-  baselineMessages.push(...recentHistory);
-  baselineMessages.push(lastUserMsg);
-  
-  let currentMessages = [...messages];
+  if (nonSystemMessages.length <= 1) {
+    console.log(`[CURATOR] Not enough conversation history to summarize after isolating system prompt.`);
+    return messages;
+  }
 
-  // 3. Stage 1: History Summarization (Attempt if history exists)
-  if (oldHistory.length > 0) {
-    console.log(`[CURATOR] Summarizing ${oldHistory.length} messages into token-dense summary...`);
-    try {
-      const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
-      const summary = await callCheapAI([
-        { 
-          role: 'system', 
-          content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 tokens maximum.
+  // Identify the absolute last user message (Current Turn)
+  const lastUserMsg = nonSystemMessages[nonSystemMessages.length - 1];
+  const conversationHistory = nonSystemMessages.slice(0, -1);
+
+  // Identify Recent History: Last 3 exchanges (6 messages) before the current turn
+  // These must remain untouched to preserve immediate flow and context
+  const recentHistory = conversationHistory.slice(-6);
+  const oldHistory = conversationHistory.slice(0, -6);
+
+  if (oldHistory.length === 0) {
+    console.log('[CURATOR] All non-system history fits within the "Recent" window. Skipping Stage 1.');
+    return [...systemMessages, ...recentHistory, lastUserMsg];
+  }
+
+  // 3. Stage 1: History Summarization (ONLY for Old History)
+  console.log(`[CURATOR] Summarizing ${oldHistory.length} messages (Old History). ${systemMessages.length} system messages isolated.`);
+  try {
+    const historyText = oldHistory.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n');
+    const summary = await callCheapAI([
+      { 
+        role: 'system', 
+        content: `You are a text compressor. Your only job is to summarize conversation history into 1000-2500 tokens maximum.
 
 Rules:
 - Keep only the most important facts, questions, and answers
@@ -149,28 +150,24 @@ Rules:
 - NEVER summarize "system" role content if it inadvertently appears
 - Be aggressive but don't invent information
 - Output ONLY the summary, no extra text` 
-        },
-        { role: 'user', content: historyText }
-      ], 2500, failedProviders);
-      
-      const reconstructed: any[] = [];
-      if (systemPrompt) reconstructed.push(systemPrompt);
-      reconstructed.push({ role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` });
-      reconstructed.push(...recentHistory);
-      reconstructed.push(lastUserMsg);
-      
-      currentMessages = reconstructed;
-      console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(currentMessages)}`);
-    } catch (e) {
-      console.error('[CURATOR] History curation failed entirely. Truncating.');
-      currentMessages = [...baselineMessages];
-    }
-  } else {
-    console.log('[CURATOR] No old history to summarize. Skipping Stage 1.');
-    currentMessages = [...baselineMessages];
+      },
+      { role: 'user', content: historyText }
+    ], 2500, failedProviders);
+    
+    // 4. Reconstruction: [Original System] + [Summary] + [Recent] + [Current]
+    const reconstructed: any[] = [
+      ...systemMessages,
+      { role: 'user', content: `[HISTORICAL SUMMARY]: ${summary}` },
+      ...recentHistory,
+      lastUserMsg
+    ];
+    
+    console.log(`[CURATOR] History shrunk. New Total: ${estimateTokens(reconstructed)} (System Prompt size preserved: ${estimateTokens(systemMessages)} tokens)`);
+    return reconstructed;
+  } catch (e) {
+    console.error('[CURATOR] History curation failed entirely. Truncating.');
+    return [...systemMessages, ...recentHistory, lastUserMsg];
   }
-
-  return currentMessages;
 }
 
 export async function POST(req: Request) {
