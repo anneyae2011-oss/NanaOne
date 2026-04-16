@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, RefreshCw, Save, ArrowLeft, Globe, Key, Zap } from 'lucide-react';
+import { Settings, RefreshCw, Save, ArrowLeft, Globe, Key, Zap, Users, ShieldOff, ShieldCheck } from 'lucide-react';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -13,6 +13,9 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [userFilter, setUserFilter] = useState<'all' | 'flagged' | 'banned'>('all');
 
   useEffect(() => {
     const access = localStorage.getItem('admin_access');
@@ -31,7 +34,8 @@ export default function AdminPage() {
       });
 
     fetchLogs();
-    const interval = setInterval(fetchLogs, 5000);
+    fetchUsers();
+    const interval = setInterval(() => { fetchLogs(); fetchUsers(); }, 5000);
     return () => clearInterval(interval);
   }, [router]);
 
@@ -45,6 +49,24 @@ export default function AdminPage() {
     } catch (e) {
       console.error('Logs fetch failed');
     }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/admin/users');
+      if (res.ok) setAllUsers(await res.json());
+    } catch (e) {
+      console.error('Users fetch failed');
+    }
+  };
+
+  const handleUserAction = async (userId: string, action: 'ban' | 'unban', reason?: string) => {
+    await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action, reason }),
+    });
+    await fetchUsers();
   };
 
   const handleSave = async () => {
@@ -228,6 +250,97 @@ export default function AdminPage() {
               <RefreshCw className="animate-spin" style={{ margin: '0 auto 12px' }} />
               <p>Waiting for system activity...</p>
             </div>
+          )}
+        </div>
+      </div>
+
+      <div className="glass-card" style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <Users className="title-gradient" />
+          <h2 className="title-gradient">User Management</h2>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          {(['all', 'flagged', 'banned'] as const).map(f => (
+            <button key={f} onClick={() => setUserFilter(f)} style={{
+              padding: '6px 14px', borderRadius: '8px', fontSize: '0.8rem', cursor: 'pointer',
+              background: userFilter === f ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${userFilter === f ? 'rgba(124,58,237,0.6)' : 'var(--glass-border)'}`,
+              color: userFilter === f ? 'var(--primary)' : 'var(--text-muted)',
+            }}>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+          <button onClick={fetchUsers} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <RefreshCw size={14} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+          {allUsers
+            .filter(u => userFilter === 'all' ? true : userFilter === 'banned' ? u.banned : (u.abuseFlagCount > 0 && !u.banned))
+            .map(u => (
+            <div key={u.id} style={{
+              padding: '12px 16px', borderRadius: '10px',
+              background: u.banned ? 'rgba(255,77,77,0.07)' : u.abuseFlagCount > 0 ? 'rgba(255,165,0,0.07)' : 'rgba(255,255,255,0.02)',
+              border: `1px solid ${u.banned ? 'rgba(255,77,77,0.25)' : u.abuseFlagCount > 0 ? 'rgba(255,165,0,0.25)' : 'var(--glass-border)'}`,
+              fontSize: '0.82rem',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{u.apiKey?.substring(0, 20)}...</span>
+                  {u.email && <span style={{ marginLeft: '8px', color: 'var(--text-muted)' }}>{u.email}</span>}
+                  {u.banned && <span style={{ marginLeft: '8px', color: '#ff4d4d', fontSize: '0.75rem' }}>BANNED</span>}
+                  {!u.banned && u.abuseFlagCount > 0 && <span style={{ marginLeft: '8px', color: 'orange', fontSize: '0.75rem' }}>{u.abuseFlagCount} FLAG(S)</span>}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)} style={{
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)',
+                    color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem', padding: '3px 10px', borderRadius: '6px',
+                  }}>
+                    {selectedUser?.id === u.id ? 'Hide' : 'Details'}
+                  </button>
+                  {u.banned ? (
+                    <button onClick={() => handleUserAction(u.id, 'unban')} style={{
+                      background: 'rgba(0,200,100,0.1)', border: '1px solid rgba(0,200,100,0.3)',
+                      color: '#00c864', cursor: 'pointer', fontSize: '0.72rem', padding: '3px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px',
+                    }}>
+                      <ShieldCheck size={11} /> Unban
+                    </button>
+                  ) : (
+                    <button onClick={() => {
+                      const reason = prompt('Ban reason (optional):') ?? 'Manually banned by admin';
+                      handleUserAction(u.id, 'ban', reason);
+                    }} style={{
+                      background: 'rgba(255,77,77,0.1)', border: '1px solid rgba(255,77,77,0.3)',
+                      color: '#ff4d4d', cursor: 'pointer', fontSize: '0.72rem', padding: '3px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px',
+                    }}>
+                      <ShieldOff size={11} /> Ban
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {selectedUser?.id === u.id && (
+                <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                  <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}>ID: {u.id} | Balance: ${u.balance?.toFixed(4)} daily + ${u.oneTimeBalance?.toFixed(4)} one-time</div>
+                  {u.banReason && <div style={{ color: '#ff4d4d', marginBottom: '6px' }}>Ban reason: {u.banReason}</div>}
+                  {u.abuseFlags && (
+                    <div>
+                      <div style={{ color: 'orange', marginBottom: '4px' }}>Abuse flags:</div>
+                      {JSON.parse(u.abuseFlags).map((f: any, i: number) => (
+                        <div key={i} style={{ color: 'var(--text-muted)', paddingLeft: '8px' }}>
+                          {f.time.split('T')[1].split('.')[0]} — {f.reason}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {allUsers.filter(u => userFilter === 'all' ? true : userFilter === 'banned' ? u.banned : (u.abuseFlagCount > 0 && !u.banned)).length === 0 && (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>No users in this category.</p>
           )}
         </div>
       </div>

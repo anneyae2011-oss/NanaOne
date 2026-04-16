@@ -13,6 +13,10 @@ export const users = pgTable('users', {
   oneTimeBalance: real('one_time_balance').default(0.0), // Non-resetting balance
   lastReset: timestamp('last_reset'),
   createdAt: timestamp('created_at').defaultNow(),
+  banned: boolean('banned').default(false),
+  banReason: text('ban_reason'), // Human-readable reason
+  abuseFlags: text('abuse_flags'), // JSON array of flag events for review
+  abuseFlagCount: integer('abuse_flag_count').default(0),
 });
 
 export const accounts = pgTable(

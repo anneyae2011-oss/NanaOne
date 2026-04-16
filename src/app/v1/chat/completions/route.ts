@@ -1,9 +1,53 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { settings, users, usageLogs, curationLogs } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+
+// --- Abuse Detection ---
+// Patterns that indicate NanaOne reselling or redistribution
+const ABUSE_PATTERNS: { pattern: RegExp; reason: string }[] = [
+  { pattern: /nanaone/i, reason: 'NanaOne branding detected' },
+  { pattern: /resell/i, reason: 'Reselling keyword detected' },
+  { pattern: /redistribu/i, reason: 'Redistribution keyword detected' },
+  { pattern: /powered\s+by\s+nana/i, reason: 'NanaOne attribution detected' },
+  { pattern: /nana[\s-]?one[\s-]?api/i, reason: 'NanaOne API reference detected' },
+];
+
+// How many flags before auto-ban kicks in (safety buffer for false positives)
+const AUTO_BAN_THRESHOLD = 3;
+
+function detectAbuse(req: Request, body: unknown): { flagged: boolean; reason: string } | null {
+  const userAgent = req.headers.get('user-agent') ?? '';
+  const referer = req.headers.get('referer') ?? '';
+  const origin = req.headers.get('origin') ?? '';
+  const bodyStr = JSON.stringify(body);
+
+  for (const { pattern, reason } of ABUSE_PATTERNS) {
+    if (pattern.test(userAgent) || pattern.test(referer) || pattern.test(origin) || pattern.test(bodyStr)) {
+      return { flagged: true, reason };
+    }
+  }
+  return null;
+}
+
+async function handleAbuseFlag(userId: string, reason: string, currentFlags: string | null, currentCount: number): Promise<boolean> {
+  const flags: { time: string; reason: string }[] = currentFlags ? JSON.parse(currentFlags) : [];
+  flags.push({ time: new Date().toISOString(), reason });
+  const newCount = currentCount + 1;
+  const shouldBan = newCount >= AUTO_BAN_THRESHOLD;
+
+  await db.update(users).set({
+    abuseFlags: JSON.stringify(flags),
+    abuseFlagCount: newCount,
+    ...(shouldBan ? { banned: true, banReason: `Auto-banned after ${newCount} abuse flags. Last: ${reason}` } : {}),
+  }).where(eq(users.id, userId));
+
+  console.log(`[ABUSE] User ${userId} flagged (${newCount}/${AUTO_BAN_THRESHOLD}): ${reason}${shouldBan ? ' — AUTO-BANNED' : ''}`);
+  return shouldBan;
+}
+// --- End Abuse Detection ---
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -220,6 +264,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid API key' }, { status: 401, headers: CORS_HEADERS });
   }
 
+  // Check if user is banned
+  if (user[0].banned) {
+    return NextResponse.json({ error: 'Your API key has been suspended. Contact support if you believe this is a mistake.' }, { status: 403, headers: CORS_HEADERS });
+  }
+
   const now = new Date();
   const lastReset = user[0].lastReset ? new Date(user[0].lastReset) : new Date(0);
   const isNewDay = now.getDate() !== lastReset.getDate() || now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear();
@@ -238,6 +287,22 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
+
+  // Abuse detection — runs after body is parsed so we can scan it too
+  const abuseResult = detectAbuse(req, body);
+  if (abuseResult) {
+    const wasBanned = await handleAbuseFlag(
+      user[0].id,
+      abuseResult.reason,
+      user[0].abuseFlags ?? null,
+      user[0].abuseFlagCount ?? 0,
+    );
+    if (wasBanned) {
+      return NextResponse.json({ error: 'Your API key has been suspended due to policy violations.' }, { status: 403, headers: CORS_HEADERS });
+    }
+    // Not banned yet — still serve the request but the flag is recorded
+  }
+
   const s = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
   if (s.length === 0) {
     return NextResponse.json({ error: 'Gateway settings not initialized' }, { status: 500, headers: CORS_HEADERS });
